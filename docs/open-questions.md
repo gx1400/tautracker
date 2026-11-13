@@ -12,9 +12,9 @@ to the maintainer one at a time.
 | Q5 | UI stack — server-rendered vs SPA | **decided** — Jinja + htmx |
 | Q11 | Development data source, given Docker serial passthrough limits | **decided** — replay transport |
 | Q12 | Platform serial strategy — ship a bridge or document one? | **decided** — document ser2net |
-| Q6 | Charting library | **open** |
+| Q6 | Charting library | **decided** — uPlot + hand-rolled SVG polar |
 | Q7 | Packaging — single container vs compose stack | **decided** — Docker-first, single container |
-| Q8 | Config file format | pending |
+| Q8 | Config file format | **open** |
 | Q9 | Satellite history depth for the polar chart | pending |
 | Q10 | Parser strategy for the status screen | pending |
 
@@ -161,10 +161,31 @@ interaction without changing the server.
 
 ## Q6 — Charting library
 
-Needs: many sparklines, large time spans, shaded state bands, a polar chart, and good
-behaviour on a phone.
+Needs: many sparklines, spans up to a year, shaded state bands, a polar sky chart, good
+behaviour on a phone, no build step (Q5) and a permissive licence (NFR-7).
 
-**Decided:** *pending*
+**Decided: uPlot for time series; hand-rolled SVG for the polar chart.**
+
+- uPlot (MIT, ~45-50 KB minified), vendored as a plain script, draws every sparkline.
+  State bands are drawn through its draw hooks.
+- The satellite sky plot is generated SVG, roughly 100 lines.
+
+Rationale:
+
+- Sparklines are the bulk of this UI and uPlot is the specialist: built for many series
+  with large point counts, canvas-based, and far lighter than the alternatives. Weight
+  matters on a phone.
+- Hand-rolling the polar chart is deliberate, not a concession. The sky plot needs
+  semantics no generic polar scatter provides: per-PRN labels, dot colour by signal
+  strength, a visual distinction between *tracked* and `Acq .`, the elevation-mask ring
+  at 10 degrees, and optionally trails (Q9). Configuring a generic library around those
+  would cost more than drawing it.
+- ECharts was the alternative, attractive for its native polar coordinates. Rejected
+  because that attraction is worth little given the custom sky-plot semantics, and
+  because trimming its ~1 MB dist requires a build step — precisely what Q5 ruled out,
+  so the no-build path forces the heavy bundle rather than allowing a tuned one.
+
+Accepted cost: two rendering approaches in the codebase.
 
 ## Q7 — Packaging
 
