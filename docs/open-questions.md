@@ -9,9 +9,10 @@ to the maintainer one at a time.
 | Q2 | Implementation language and runtime | **decided** — Python |
 | Q3 | Local storage engine and retention tiering | **decided** — SQLite, app-side rollups |
 | Q4 | How much ADEV analysis to implement | **decided** — long-tau ADEV only |
-| Q5 | UI stack — server-rendered vs SPA | **open** |
+| Q5 | UI stack — server-rendered vs SPA | **decided** — Jinja + htmx |
 | Q6 | Charting library | pending |
-| Q7 | Packaging — single container vs compose stack | pending |
+| Q11 | Development data source, given Windows serial passthrough | **open** |
+| Q7 | Packaging — single container vs compose stack | **decided** — Docker-first, single container |
 | Q8 | Config file format | pending |
 | Q9 | Satellite history depth for the polar chart | pending |
 | Q10 | Parser strategy for the status screen | pending |
@@ -134,10 +135,28 @@ characterisation.
 
 ## Q5 — UI stack
 
-Server-rendered with progressive enhancement, or a single-page app. Affects the
-responsive implementation and how live updates arrive.
+Server-rendered with progressive enhancement, or a single-page app.
 
-**Decided:** *pending*
+**Decided: server-rendered Jinja + htmx, with charts hydrated client-side.**
+
+FastAPI renders pages; htmx swaps fragments on span change and for live refresh; a
+small chart library draws into canvas from JSON endpoints.
+
+Rationale:
+
+- No build step and no `node_modules`. Clone, `pip install`, run. This continues the
+  self-containment thread from Q1 and Q3 and keeps the prototype immediate.
+- Keeps the stack Python plus a little JavaScript, supporting the maintainability
+  argument that decided Q2.
+- This is a **read-only** dashboard. The interaction budget is "pick a span and look",
+  which htmx covers.
+- Server-side span handling is the natural place for raw-vs-trends tier selection
+  (Q3): the server picks the tier, the client only draws.
+
+Accepted costs: rich cross-chart interaction (linked cursors, drag-zoom across panels)
+would be awkward; live updates are polled rather than pushed unless SSE is added
+later. The chart layer is already client-side JavaScript, so it can absorb richer
+interaction without changing the server.
 
 ## Q6 — Charting library
 
@@ -148,9 +167,14 @@ behaviour on a phone.
 
 ## Q7 — Packaging
 
-Single container with embedded storage, or a compose stack with an external database.
+**Decided (maintainer directive): Docker deployment first, single container.**
 
-**Decided:** *pending*
+- The container is the primary deployment target, not an afterthought. Running
+  directly from a checkout stays supported for development.
+- Storage is embedded (Q3), so no sidecar database. A volume holds the SQLite file.
+- For initial testing the host serial port is passed into the container.
+- Once the Waveshare TCP gateway is in place, the TCP transport removes the need for
+  device passthrough entirely — which is the longer-term intent.
 
 ## Q8 — Config file format
 

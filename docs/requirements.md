@@ -59,7 +59,17 @@
 ## Non-functional
 
 - **NFR-1** Single GPSDO per instance; the data model must not preclude multiple.
-- **NFR-2** Run as a container; also runnable directly for development.
+- **NFR-2** **Docker deployment first.** The container is the primary deployment
+  target; running directly from a checkout remains supported for development.
+- **NFR-2a** Storage is embedded, so no sidecar database. A single volume holds the
+  SQLite file.
+- **NFR-2b** For initial testing the host serial device is passed into the container.
+  On Linux hosts this is `--device /dev/ttyUSB0`. **On Windows hosts, Docker Desktop
+  cannot pass a COM port into a Linux container** — the USB device must first be
+  attached to WSL2 with `usbipd-win`, which detaches it from Windows. See
+  `open-questions.md` Q11.
+- **NFR-2c** Once a TCP serial gateway is available, the TCP transport removes the
+  need for device passthrough entirely. This is the intended long-term configuration.
 - **NFR-3** Configuration from a file, with environment-variable overrides.
 - **NFR-4** Modest footprint — target a Raspberry Pi class host.
 - **NFR-5** Survive restarts without data loss beyond the in-flight poll.
