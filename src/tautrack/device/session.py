@@ -9,6 +9,7 @@ Two invariants are enforced here rather than trusted to callers:
    monitoring tool that can factory-reset the instrument it monitors is a liability -
    doing that by accident would wipe the diagnostic log and the surveyed position.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -126,8 +127,7 @@ class Session:
                     )
 
         raise TransportError(
-            f"no prompt within {timeout:.1f}s for {cmd!r} "
-            f"after {reads} read(s), {len(buf)} byte(s)"
+            f"no prompt within {timeout:.1f}s for {cmd!r} after {reads} read(s), {len(buf)} byte(s)"
         )
 
     async def clear(self) -> None:

@@ -13,6 +13,9 @@ dependencies = [
   "uvicorn[standard]>=0.32",
   "jinja2>=3.1",
   "pyserial>=3.5",
+  # The IANA timezone database. Neither Windows nor python:*-slim ships one, so
+  # zoneinfo cannot resolve any key - including "UTC" - without this.
+  "tzdata>=2024.1",
   "pydantic>=2.9",
   "pydantic-settings>=2.6",
   "opentelemetry-sdk>=1.28",
@@ -26,7 +29,7 @@ dev = ["pytest>=8.3", "pytest-asyncio>=0.24", "ruff>=0.7"]
 tautrack = "tautrack.__main__:main"
 
 [project.urls]
-Homepage = "https://github.com/gx1400/tautrack"
+Homepage = "https://github.com/gx1400/tautracker"
 
 [build-system]
 requires = ["setuptools>=68"]

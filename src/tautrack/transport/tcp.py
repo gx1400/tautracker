@@ -13,9 +13,11 @@ instrument faults rather than configuration mistakes:
   state, so concurrent readers consume each other's replies (C-2). The Waveshare will
   happily accept 30 connections; that is a trap, not a feature.
 """
+
 from __future__ import annotations
 
 import asyncio
+import contextlib
 
 from .base import Transport, TransportError
 
@@ -34,17 +36,15 @@ class TcpTransport(Transport):
     async def open(self) -> None:
         try:
             self._reader, self._writer = await asyncio.open_connection(self._host, self._port)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise TransportError(f"cannot connect to {self._host}:{self._port}: {exc}") from exc
 
     async def close(self) -> None:
         if self._writer is not None:
             writer, self._writer, self._reader = self._writer, None, None
             writer.close()
-            try:
+            with contextlib.suppress(Exception):
                 await writer.wait_closed()
-            except Exception:  # noqa: BLE001 - already closing; nothing useful to do
-                pass
 
     async def write(self, data: bytes) -> None:
         if self._writer is None:
@@ -52,7 +52,7 @@ class TcpTransport(Transport):
         try:
             self._writer.write(data)
             await self._writer.drain()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise TransportError(f"tcp write failed: {exc}") from exc
 
     async def read(self, timeout: float) -> bytes:
@@ -62,7 +62,7 @@ class TcpTransport(Transport):
             data = await asyncio.wait_for(self._reader.read(4096), timeout=max(timeout, 0.1))
         except TimeoutError:
             return b""
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise TransportError(f"tcp read failed: {exc}") from exc
         if data == b"":
             # Clean EOF: the gateway closed the connection. Distinguish this from a
@@ -81,7 +81,7 @@ class TcpTransport(Transport):
         while True:
             try:
                 chunk = await asyncio.wait_for(self._reader.read(4096), timeout=0.05)
-            except (TimeoutError, Exception):  # noqa: B014 - nothing left, or link gone
+            except (TimeoutError, Exception):
                 return
             if not chunk:
                 return

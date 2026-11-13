@@ -4,6 +4,7 @@ Every fixture is a verbatim ``:SYST:STAT?`` response from an HP Z3801A
 (S/N 3542A05653, firmware 3543-A), chosen to cover the state variants that each broke
 the shell prototype at least once. See docs/open-questions.md Q10.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -111,3 +112,16 @@ def test_pps_ti_absent_while_unlocked_is_not_a_failure() -> None:
     s = parse_screen(load("holdover_zero_tracked"))
     assert s.pps_ti_ns is None
     assert "pps_ti_ns" not in s.parse_failures
+
+
+def test_pps_clk_status_is_not_the_acquisition_banner() -> None:
+    """``1PPS CLK`` appears twice on the screen.
+
+    Once inside the ACQUISITION banner's brackets (``[ GPS 1PPS CLK Valid ]``) and once
+    as a right-panel field. A whole-screen search finds the banner first and returns
+    the useless fragment ``Valid ]``.
+    """
+    s = parse_screen(load("locked_hold_tracked"))
+    assert s.pps_clk_status is not None
+    assert not s.pps_clk_status.endswith("]"), f"matched the banner: {s.pps_clk_status!r}"
+    assert "Synchronized" in s.pps_clk_status or "Invalid" in s.pps_clk_status

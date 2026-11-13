@@ -20,6 +20,7 @@ Strategy therefore:
 3. Unparseable fields return ``None`` and are counted, so a parse regression surfaces
    as a metric rather than as silently missing data.
 """
+
 from __future__ import annotations
 
 import re
@@ -91,6 +92,10 @@ class Screen:
 
 _BRACKET = re.compile(r"\[\s*(.+?)\s*\]")
 _SAT_HEADER = re.compile(r"PRN\s+El\s+Az")
+#: A section banner: an all-caps label followed by a dot leader, e.g.
+#: "ACQUISITION ...... [ GPS 1PPS CLK Valid ]". These run the full screen width, so
+#: they must be excluded before searching a single panel for field labels.
+_BANNER_LINE = re.compile(r"^[A-Z][A-Z ]+\s*\.{3,}")
 _NUM = r"[-+]?\d+(?:\.\d+)?"
 
 
@@ -116,7 +121,7 @@ def _right_panel_start(lines: list[str]) -> int:
     return 46
 
 
-def parse_screen(text: str) -> Screen:  # noqa: C901 - a wide screen means many fields
+def parse_screen(text: str) -> Screen:
     s = Screen()
     lines = text.splitlines()
     whole = "\n".join(lines)
@@ -172,7 +177,16 @@ def parse_screen(text: str) -> Screen:  # noqa: C901 - a wide screen means many 
         h, mi, sec = (int(g) if g else 0 for g in m.groups())
         s.holdover_duration_s = h * 3600 + mi * 60 + sec
 
-    if m := re.search(r"1PPS CLK\s+(.+)", whole):
+    # '1PPS CLK' appears TWICE: inside the ACQUISITION banner's brackets
+    # ('[ GPS 1PPS CLK Valid ]') and as a right-panel field. A whole-screen search
+    # finds the banner first and yields the useless fragment 'Valid ]'.
+    #
+    # Slicing to the right panel is not enough either, because banner lines run the
+    # full width and survive the slice. Banner lines are recognisable by their dot
+    # leader, so drop those and then take the right panel.
+    body_lines = [ln for ln in lines if not _BANNER_LINE.match(ln)]
+    right_text = "\n".join(line[right:] for line in body_lines)
+    if m := re.search(r"1PPS CLK\s+(.+)", right_text):
         s.pps_clk_status = m.group(1).strip()
 
     if m := re.search(r"Tracking:\s*(\d+)", whole):
@@ -183,7 +197,9 @@ def parse_screen(text: str) -> Screen:  # noqa: C901 - a wide screen means many 
         s.not_tracking_count = int(m.group(1))
 
     # --- time: 'GPS      12:28:34     30 Mar 2007', optionally with [?] ---
-    if m := re.search(r"(?:GPS|UTC|LOCAL)\s+(\d\d:\d\d:\d\d)\s*(\[\?\])?\s*(\d{1,2} \w{3} \d{4})", whole):
+    if m := re.search(
+        r"(?:GPS|UTC|LOCAL)\s+(\d\d:\d\d:\d\d)\s*(\[\?\])?\s*(\d{1,2} \w{3} \d{4})", whole
+    ):
         s.gps_time = f"{m.group(1)} {m.group(3)}"
         s.time_unconfirmed = m.group(2) is not None
     else:
@@ -217,9 +233,8 @@ def parse_screen(text: str) -> Screen:  # noqa: C901 - a wide screen means many 
             break
 
     # --- health ---
-    if line := _find_line(lines, "HEALTH MONITOR"):
-        if m := _BRACKET.search(line):
-            s.health.overall = m.group(1)
+    if (line := _find_line(lines, "HEALTH MONITOR")) and (m := _BRACKET.search(line)):
+        s.health.overall = m.group(1)
     for label, attr in (
         ("Self Test", "self_test"),
         ("Int Pwr", "int_pwr"),
@@ -292,9 +307,7 @@ def _tracked_rows(segment: str) -> list[Satellite]:
 
 
 #: A not-tracking entry: optional '*', PRN, then either El/Az, 'Acq .', or '-- ---'.
-_UNTRACKED = re.compile(
-    r"(\*)?\s*(\d{1,2})\s+(?:(Acq\s*\.+)|(--)\s+(---)|(\d{1,3})\s+(\d{1,3}))"
-)
+_UNTRACKED = re.compile(r"(\*)?\s*(\d{1,2})\s+(?:(Acq\s*\.+)|(--)\s+(---)|(\d{1,3})\s+(\d{1,3}))")
 
 
 def _untracked_rows(segment: str) -> list[Satellite]:

@@ -22,9 +22,11 @@ Usage:
     python tools/dev-bridge.py --serial COM7 --listen 4196
     python tools/dev-bridge.py --serial /dev/ttyUSB0 --listen 4196
 """
+
 from __future__ import annotations
 
 import argparse
+import contextlib
 import socket
 import threading
 import time
@@ -44,7 +46,7 @@ def pump_serial_to_client(ser: serial.Serial, conn: socket.socket, stop: threadi
     while not stop.is_set():
         try:
             data = ser.read(4096)
-        except Exception as exc:  # noqa: BLE001 - surface any serial fault and drop the client
+        except Exception as exc:
             log(f"serial read failed: {exc}")
             stop.set()
             return
@@ -69,10 +71,8 @@ def serve(ser: serial.Serial, listen_host: str, listen_port: int) -> None:
         if busy:
             # Refuse rather than accept: two SCPI readers would corrupt each other.
             log(f"refusing {addr[0]}:{addr[1]} - a client is already connected")
-            try:
+            with contextlib.suppress(OSError):
                 conn.sendall(b"tautrack dev-bridge: busy, one client at a time\r\n")
-            except OSError:
-                pass
             conn.close()
             continue
 
@@ -80,10 +80,8 @@ def serve(ser: serial.Serial, listen_host: str, listen_port: int) -> None:
         log(f"client {addr[0]}:{addr[1]} connected")
         # Discard anything the device emitted while nobody was listening, so the new
         # client's first read starts at a clean boundary rather than mid-reply.
-        try:
+        with contextlib.suppress(Exception):
             ser.reset_input_buffer()
-        except Exception:  # noqa: BLE001
-            pass
 
         stop = threading.Event()
         pump = threading.Thread(target=pump_serial_to_client, args=(ser, conn, stop), daemon=True)
@@ -93,7 +91,7 @@ def serve(ser: serial.Serial, listen_host: str, listen_port: int) -> None:
             while not stop.is_set():
                 try:
                     data = conn.recv(4096)
-                except socket.timeout:
+                except TimeoutError:
                     continue
                 except OSError:
                     break
@@ -109,10 +107,16 @@ def serve(ser: serial.Serial, listen_host: str, listen_port: int) -> None:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--serial", required=True, help="serial device, e.g. COM7 or /dev/ttyUSB0")
     ap.add_argument("--listen", type=int, default=4196, help="TCP port to listen on (default 4196)")
-    ap.add_argument("--bind", default="0.0.0.0", help="address to bind (default 0.0.0.0, reachable from containers)")
+    ap.add_argument(
+        "--bind",
+        default="0.0.0.0",
+        help="address to bind (default 0.0.0.0, reachable from containers)",
+    )
     ap.add_argument("--baud", type=int, default=19200)
     ap.add_argument("--bits", type=int, default=7, choices=sorted(BYTESIZE))
     ap.add_argument("--parity", default="odd", choices=sorted(PARITY))
@@ -127,7 +131,9 @@ def main() -> None:
         stopbits=STOPBITS[args.stopbits],
         timeout=0.2,
     )
-    log(f"serial open: {args.serial} {args.baud} {args.bits}{args.parity[0].upper()}{args.stopbits}")
+    log(
+        f"serial open: {args.serial} {args.baud} {args.bits}{args.parity[0].upper()}{args.stopbits}"
+    )
     try:
         serve(ser, args.bind, args.listen)
     except KeyboardInterrupt:

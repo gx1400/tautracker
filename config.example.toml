@@ -1,0 +1,70 @@
+# tautrack configuration.
+#
+# Every value here can be overridden by environment variable using TAUTRACK_ and
+# "__" for nesting, e.g. TAUTRACK_TRANSPORT__KIND=tcp
+# Precedence: environment > this file > built-in defaults.
+
+database = "data/tautrack.db"
+
+[transport]
+# serial | tcp | replay
+#   serial  direct USB/RS-232. Works in Docker only on a Linux host.
+#   tcp     a serial device server (Waveshare, ser2net). The portable option, and
+#           the only one that works from Docker Desktop on Windows or macOS.
+#   replay  recorded session; no hardware needed. Used for development and CI.
+kind = "replay"
+read_timeout = 8.0
+
+[transport.serial]
+# The HP Z3801A is 19200 7-O-1, which is unusual - most equipment is 8-N-1, and a
+# device server that only offers 8-N-1 cannot talk to it at all.
+port = "COM7"          # or /dev/ttyUSB0
+baudrate = 19200
+bytesize = 7
+parity = "odd"
+stopbits = 1
+
+[transport.tcp]
+host = "127.0.0.1"
+port = 4196
+
+[transport.replay]
+path = "tests/fixtures/session.jsonl"
+loop = true
+speed = 0.0            # seconds between replayed transactions; 0 = as fast as polled
+
+[poll]
+# Discrete queries measure ~0.2s each and the status screen ~2.8s, so a fast tick of
+# ten short queries fits comfortably inside 15s.
+fast_seconds = 15.0
+slow_every = 4         # fetch the full status screen every Nth fast tick
+
+[retention]
+# Zabbix-style tiering: raw history kept briefly, aggregates kept for years.
+# Aggregates keep min and max, so a ten-minute holdover stays visible in a year view.
+raw_days = 14
+hourly_days = 400
+daily_days = 3650
+housekeeping_minutes = 30
+
+[web]
+# Loopback by default: there is no authentication, so exposing the UI must be a
+# deliberate choice. In a container this must be 0.0.0.0 to be reachable through a
+# published port - the container network boundary is what limits exposure.
+host = "127.0.0.1"
+port = 8080
+
+[display]
+timezone = "America/Chicago"
+# 1996 firmware reports a date 1024 GPS weeks (7168 days) behind actual. This
+# corrects the *display* only; stored samples keep exactly what the device reported.
+# Set to 0 for a receiver without the rollover bug.
+gps_rollover_days = 7168
+
+[otel]
+enabled = false
+endpoint = "http://localhost:4318"
+service_name = "tautrack"
+metrics = true
+logs = true
+traces = true

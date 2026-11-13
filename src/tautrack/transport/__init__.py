@@ -1,4 +1,5 @@
 """Transports: serial, TCP and replay, behind one narrow interface."""
+
 from __future__ import annotations
 
 from ..config import TransportSettings
@@ -9,8 +10,8 @@ from .tcp import TcpTransport
 
 __all__ = [
     "PROMPT_ANY",
-    "Reply",
     "ReplayTransport",
+    "Reply",
     "SerialTransport",
     "TcpTransport",
     "Transport",

@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<title>tautrack</title>
+<link rel="stylesheet" href="/static/uplot.min.css">
+<link rel="stylesheet" href="/static/app.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='13'>&#9201;</text></svg>">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="sigma">&sigma;(&tau;)</span>
+    <span class="name">tautrack</span>
+  </div>
+  <div class="device" id="device">&mdash;</div>
+  <div class="conn" id="conn"><span class="dot" id="conn-dot"></span><span id="conn-text">connecting</span></div>
+</header>
+
+<main>
+
+  <!-- Clocks. The unit's own reading is shown verbatim, including [?]; the corrected
+       value adds the GPS week-rollover offset back for display only. -->
+  <section class="panel clocks" aria-label="Clocks">
+    <div class="clock">
+      <h3>Unit reports</h3>
+      <div class="clock-value" id="clk-unit">&mdash;</div>
+      <div class="clock-note" id="clk-unit-note"></div>
+    </div>
+    <div class="clock">
+      <h3>Corrected UTC</h3>
+      <div class="clock-value" id="clk-utc">&mdash;</div>
+      <div class="clock-note">rollover offset applied</div>
+    </div>
+    <div class="clock">
+      <h3>Local <span class="tz" id="clk-tzname">{{ timezone }}</span></h3>
+      <div class="clock-value" id="clk-local">&mdash;</div>
+      <div class="clock-note" id="clk-local-note"></div>
+    </div>
+  </section>
+
+  <!-- Current state at a glance. -->
+  <section class="tiles" id="tiles" aria-label="Current state"></section>
+
+  <section class="panel sky-panel" aria-label="Satellite sky view">
+    <div class="panel-head">
+      <h2>Sky view</h2>
+      <label class="trail-toggle">
+        <input type="checkbox" id="trail-toggle">
+        <span>trails</span>
+      </label>
+    </div>
+    <div class="sky-wrap">
+      <svg id="sky" viewBox="0 0 320 320" role="img" aria-label="Satellite azimuth and elevation"></svg>
+      <ul class="sat-list" id="sat-list"></ul>
+    </div>
+  </section>
+
+  <div class="span-bar" role="group" aria-label="Time span">
+    {% for s in spans %}
+    <button type="button" class="span{% if s == '1h' %} active{% endif %}" data-span="{{ s }}">{{ s }}</button>
+    {% endfor %}
+  </div>
+
+  <section class="charts" id="charts" aria-label="Trends">
+    {% for c in charts %}
+    <figure class="chart-card" data-metric="{{ c.metric }}" data-zero="{{ '1' if c.zero else '0' }}">
+      <figcaption>
+        <span class="chart-title">{{ c.title }}</span>
+        <span class="chart-meta">
+          <span class="chart-last" data-role="last">&mdash;</span>
+          <span class="chart-unit">{{ c.unit }}</span>
+          <span class="chart-res" data-role="res"></span>
+        </span>
+      </figcaption>
+      <div class="chart-host" data-role="host"></div>
+    </figure>
+    {% endfor %}
+  </section>
+
+  <section class="panel events-panel" aria-label="Events">
+    <div class="panel-head"><h2>Recent events</h2></div>
+    <ul class="events" id="events"></ul>
+  </section>
+
+</main>
+
+<footer>
+  tautrack v{{ version }} &middot; read-only &middot;
+  <span id="foot-note">σ(τ) is Allan deviation; τ is the averaging interval</span>
+</footer>
+
+<script src="/static/uplot.iife.min.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

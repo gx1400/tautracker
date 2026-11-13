@@ -4,6 +4,7 @@ pyserial is blocking, so every call is pushed to a worker thread to keep the eve
 free. The read timeout is deliberately short: :class:`Session` polls repeatedly while
 scanning for a prompt, so a short timeout makes it responsive rather than slow.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -52,7 +53,7 @@ class SerialTransport(Transport):
 
         try:
             self._ser = await asyncio.to_thread(_open)
-        except Exception as exc:  # noqa: BLE001 - surfaced uniformly as TransportError
+        except Exception as exc:
             raise TransportError(f"cannot open {self._port}: {exc}") from exc
 
     async def close(self) -> None:
@@ -65,7 +66,7 @@ class SerialTransport(Transport):
             raise TransportError("serial port not open")
         try:
             await asyncio.to_thread(self._ser.write, data)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise TransportError(f"serial write failed: {exc}") from exc
 
     async def read(self, timeout: float) -> bytes:
@@ -83,7 +84,7 @@ class SerialTransport(Transport):
             return await asyncio.wait_for(asyncio.to_thread(_read), timeout=max(timeout, 0.1))
         except TimeoutError:
             return b""
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise TransportError(f"serial read failed: {exc}") from exc
 
     async def reset_input(self) -> None:

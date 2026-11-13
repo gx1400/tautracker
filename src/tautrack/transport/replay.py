@@ -17,6 +17,7 @@ Two behaviours here are deliberate rather than incidental:
 * **Unknown commands answer ``E-113>``**, which is what the firmware does for an
   undefined header. That keeps error handling on the tested path.
 """
+
 from __future__ import annotations
 
 import asyncio

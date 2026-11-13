@@ -8,6 +8,7 @@ dependency. Nested values are overridden with ``__``, the Pydantic Settings conv
 
 Precedence is environment > file > defaults.
 """
+
 from __future__ import annotations
 
 import tomllib
@@ -15,7 +16,7 @@ from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 
 class SerialSettings(BaseModel):
@@ -142,6 +143,26 @@ class Settings(BaseSettings):
     otel: OtelSettings = Field(default_factory=OtelSettings)
     web: WebSettings = Field(default_factory=WebSettings)
     display: DisplaySettings = Field(default_factory=DisplaySettings)
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        """Put the environment ahead of init kwargs.
+
+        The TOML file is supplied as init kwargs, and pydantic-settings ranks those
+        highest by default - which would make the file beat the environment, the
+        opposite of the documented precedence. Containers in particular need the
+        environment to win, so a mounted config can be overridden per deployment.
+
+        Resulting order: environment > file > defaults.
+        """
+        return (env_settings, dotenv_settings, init_settings, file_secret_settings)
 
     @model_validator(mode="after")
     def _check_cadence(self) -> Settings:

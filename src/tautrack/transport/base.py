@@ -13,6 +13,7 @@ Measured timings on an HP Z3801A at 19200 7-O-1: short queries 0.20 s, status sc
 2.84 s. The previous shell prototype used 0.7 s and 4.0 s fixed sleeps, so prompt
 scanning is both correct and faster.
 """
+
 from __future__ import annotations
 
 import abc
