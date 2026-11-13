@@ -6,8 +6,8 @@ to the maintainer one at a time.
 | # | Question | Status |
 | --- | --- | --- |
 | Q1 | Where does the time-series data live? | **decided** — own store, OTel additive |
-| Q2 | Implementation language and runtime | **open** |
-| Q3 | Retention tiering mechanism | pending |
+| Q2 | Implementation language and runtime | **decided** — Python |
+| Q3 | Retention tiering mechanism | **open** |
 | Q4 | How much ADEV analysis to implement | pending |
 | Q5 | UI stack — server-rendered vs SPA | pending |
 | Q6 | Charting library | pending |
@@ -45,11 +45,27 @@ Accepted costs: data is stored twice, and the tiering mechanism is ours to build
 
 ## Q2 — Implementation language and runtime
 
-Gates everything downstream. Candidates: Python (fast to build, mature OTel SDK,
-matches existing tooling in other repos) vs Go (single static binary, trivial
-container).
+Gates the storage engine, the web framework and the packaging.
 
-**Decided:** *pending*
+**Decided: Python.** Async poller, FastAPI for the HTTP/API layer.
+
+Rationale:
+
+- Maintainability by the maintainer outweighs a tidier container. This is a tool to be
+  owned for years alongside the instrument, and Python is already in use across the
+  maintainer's other repositories (`ruff.toml` in `dfm17_hamradio`, `python-s1p-plot`,
+  `python-trx-cloudlog`, `pyweaving_warptracker`).
+- The OpenTelemetry Python SDK is mature across all three signals — metrics, logs and
+  traces — which FR-20 requires.
+- The real complexity here is parsing a fixed-width, state-dependent status screen
+  (Q10). Python suits that work.
+- Performance is irrelevant at one poll per 15 s (C-1, C-2).
+
+Accepted costs: a ~100–150 MB container rather than ~20 MB, and a runtime to install.
+Long-lived async tasks need deliberate handling of unhandled exceptions so a dead
+poller task cannot go unnoticed.
+
+If footprint ever matters, the poller is the only component that would need porting.
 
 ## Q3 — Retention tiering mechanism
 
