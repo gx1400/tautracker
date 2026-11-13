@@ -9,7 +9,7 @@ responsive web UI — plus exports to an existing OpenTelemetry/Grafana stack.
 ## In scope (v1)
 
 | Area | Included |
-|---|---|
+| --- | --- |
 | Devices | HP Z3801A and SCPI-compatible siblings (Z3805A, 58503A, Lucent/Symmetricom SmartClock units) |
 | Transport | Serial (USB/RS-232) **and** TCP (serial device server, e.g. Waveshare PoE ETH (B)) |
 | Polling | Configurable cadence, split fast/slow (see below) |
@@ -61,7 +61,7 @@ Derived from two days of captured Z3801A telemetry.
 ### From `:SYST:STAT?` (slow poll, ~4 s)
 
 | Metric | Type | Notes |
-|---|---|---|
+| --- | --- | --- |
 | Synchronisation state | enum | `Outputs Valid` / `Valid/Reduced Accuracy` / `Outputs Invalid` |
 | SmartClock mode | enum | `Locked to GPS` (± `stabilizing frequency`), `Recovery`, `Holdover`, `Power-up` (+ substate) |
 | TFOM / FFOM | int 0–9 | Time / frequency figure of merit; lower is better, FFOM 0 = settled |
@@ -84,7 +84,7 @@ Derived from two days of captured Z3801A telemetry.
 ### From direct queries (fast poll, ~0.7 s each)
 
 | Query | Metric |
-|---|---|
+| --- | --- |
 | `:DIAG:ROSC:EFC?` | **EFC %** — oscillator steering, the long-term aging indicator |
 | `:GPS:SAT:TRAC?` | Tracked PRN list |
 | `:SYST:ERR?` | Error queue |
@@ -94,7 +94,7 @@ Derived from two days of captured Z3801A telemetry.
 ### Derived metrics
 
 | Metric | Derivation |
-|---|---|
+| --- | --- |
 | Lock duty cycle | Rolling fraction of samples in a `Locked` mode |
 | Satellite count (true) | **Caveat:** polled counts undersample badly. Observed: survey advanced 8 %/h during an hour where *zero* 60 s samples caught 4+ satellites. Treat polled counts as indicative; prefer derived state |
 | Lowest elevation acquired | The antenna-siting diagnostic — more informative than signal strength |
