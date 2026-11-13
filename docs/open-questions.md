@@ -7,8 +7,8 @@ to the maintainer one at a time.
 | --- | --- | --- |
 | Q1 | Where does the time-series data live? | **decided** — own store, OTel additive |
 | Q2 | Implementation language and runtime | **decided** — Python |
-| Q3 | Retention tiering mechanism | **open** |
-| Q4 | How much ADEV analysis to implement | pending |
+| Q3 | Local storage engine and retention tiering | **decided** — SQLite, app-side rollups |
+| Q4 | How much ADEV analysis to implement | **open** |
 | Q5 | UI stack — server-rendered vs SPA | pending |
 | Q6 | Charting library | pending |
 | Q7 | Packaging — single container vs compose stack | pending |
@@ -67,13 +67,36 @@ poller task cannot go unnoticed.
 
 If footprint ever matters, the poller is the only component that would need porting.
 
-## Q3 — Retention tiering mechanism
+## Q3 — Local storage engine and retention tiering
 
-The Zabbix history/trends analogue. Options differ by where the downsampling runs:
-database-side (Influx tasks, Timescale continuous aggregates) or application-side.
-Must preserve min/max (FR-10).
+Storage engine and tiering mechanism are coupled, so they were decided together.
 
-**Decided:** *pending*
+**Decided: SQLite with application-side rollups**, following the Zabbix
+history/trends model.
+
+- `samples` — raw observations, retained short-term (default 14 days).
+- `trends` — per-bucket `min`/`avg`/`max`/`count`, hourly and daily, retained for
+  years.
+- A periodic housekeeping task rolls raw into trends, then prunes raw.
+
+Rationale:
+
+- Preserves the self-containment that decided Q1: clone, run, see data, with no
+  database to provision. Adding a Postgres dependency would give back much of the
+  independence Q1 was chosen for.
+- This is exactly Zabbix's own model, so the maintainer's requested analogy maps
+  directly rather than approximately.
+- Volume does not justify a real TSDB. A 15 s fast poll plus 60 s slow poll yields on
+  the order of **58k rows/day** stored narrow (~21 M/year raw); at 14 days raw that is
+  ~800k live rows, plus hourly trends of ~280k rows/year.
+- WAL mode handles a single writer plus the UI's readers at this volume.
+- Writing the rollup ourselves gives exact control over FR-10's min/max preservation.
+
+Accepted costs: the rollup logic is ours to own and test; bucket queries are
+hand-written SQL; and external concurrent access is limited.
+
+Migration path if outgrown: the schema ports to TimescaleDB with the rollup task
+replaced by continuous aggregates. The rollup semantics transfer.
 
 ## Q4 — How much ADEV analysis to implement
 
