@@ -7,10 +7,11 @@ knowing whether the answer comes from raw samples or an aggregate (Q5).
 
 from __future__ import annotations
 
+import itertools
 import sqlite3
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from importlib import resources
 from pathlib import Path
 from typing import Any
@@ -22,12 +23,22 @@ RAW_MAX_SECONDS = 24 * 3600
 HOURLY_MAX_SECONDS = 60 * 24 * 3600
 
 
+#: A gap is declared when consecutive samples are further apart than this multiple
+#: of the expected cadence. Three leaves room for one missed poll without crying wolf,
+#: while still catching a real outage.
+GAP_FACTOR = 3.0
+
+
 @dataclass(slots=True)
 class Series:
-    """A metric over time, with its resolution made explicit.
+    """A metric over time, with its resolution and its holes made explicit.
 
     ``span`` tells the caller which tier answered, so the UI can say so rather than
     silently implying raw fidelity over a one-year view.
+
+    ``gaps`` matters because a gap here is an *absence of rows*, not a row containing
+    null. Without it a chart joins the samples either side of an outage with a straight
+    line, drawing an hour of missing data as though it had been measured.
     """
 
     metric: str
@@ -36,6 +47,8 @@ class Series:
     value: list[float | None]
     min_value: list[float | None] | None = None
     max_value: list[float | None] | None = None
+    #: Inclusive (start, end) epoch pairs with no data between them.
+    gaps: list[tuple[int, int]] = field(default_factory=list)
 
 
 class _Result:
@@ -331,7 +344,14 @@ class Store:
             return "hour"
         return "day"
 
-    def series(self, device_id: int, metric: str, seconds: int, now: int | None = None) -> Series:
+    def series(
+        self,
+        device_id: int,
+        metric: str,
+        seconds: int,
+        now: int | None = None,
+        expected_interval: float | None = None,
+    ) -> Series:
         now = now or int(time.time())
         since = now - seconds
         span = self.choose_span(seconds)
@@ -344,12 +364,14 @@ class Store:
                 "ORDER BY ts",
                 (device_id, mid, since),
             ).fetchall()
-            return Series(
-                metric=metric,
-                span="raw",
-                ts=[int(r["ts"]) for r in rows],
-                value=[r["value"] for r in rows],
-            )
+            ts = [int(r["ts"]) for r in rows]
+            vals: list[float | None] = [r["value"] for r in rows]
+            # The MEASURED cadence wins; the caller's expectation is only a fallback for
+            # when there are too few points to estimate from. Backfilled history can
+            # carry a different cadence from the live poller, and trusting the
+            # configured value there turns every normal interval into a false gap.
+            interval = _nominal_interval(ts) or (expected_interval or 0.0)
+            return _with_gaps(Series(metric=metric, span="raw", ts=ts, value=vals), interval)
 
         rows = self._conn.execute(
             "SELECT bucket, min_value, avg_value, max_value FROM trends "
@@ -357,7 +379,7 @@ class Store:
             "ORDER BY bucket",
             (device_id, mid, span, since),
         ).fetchall()
-        return Series(
+        series = Series(
             metric=metric,
             span=span,
             ts=[int(r["bucket"]) for r in rows],
@@ -365,6 +387,8 @@ class Store:
             min_value=[r["min_value"] for r in rows],
             max_value=[r["max_value"] for r in rows],
         )
+        # Aggregate buckets have a known, fixed width, so no estimation is needed.
+        return _with_gaps(series, 3600.0 if span == "hour" else 86400.0)
 
     def state_spans(
         self, device_id: int, metric: str, seconds: int, now: int | None = None
@@ -403,3 +427,69 @@ class Store:
             (device_id, now - seconds),
         ).fetchall()
         return [dict(r) for r in rows]
+
+
+def _nominal_interval(ts: list[int]) -> float:
+    """Estimate the sampling cadence from the data itself.
+
+    Uses a high percentile rather than the median, because one window can contain more
+    than one cadence: backfilled history recorded every 66 s sits alongside live data
+    polled every 15 s. The median follows whichever is more numerous, so against a
+    median of 15 s every single backfilled interval looks like an outage - which is
+    exactly what happened, reporting 726 "gaps" over 24 hours, most of them 1.1 minutes
+    long.
+
+    The 90th percentile instead tolerates the slowest cadence actually present, while
+    staying far below the minutes-to-hours scale of a real outage. It only misleads if
+    genuine gaps make up more than a tenth of all intervals, at which point a higher
+    threshold is arguably the right answer anyway.
+    """
+    if len(ts) < 3:
+        return 0.0
+    deltas = sorted(b - a for a, b in itertools.pairwise(ts))
+    idx = min(int(len(deltas) * 0.9), len(deltas) - 1)
+    return float(deltas[idx])
+
+
+def _with_gaps(series: Series, interval: float) -> Series:
+    """Record gaps and insert an explicit null so a chart breaks its line.
+
+    Both halves are needed. The null is what makes the renderer stop drawing; the gap
+    list is what lets it shade the missing region. Without the null, a chart joins the
+    samples either side of an outage and presents it as measured data.
+    """
+    if interval <= 0 or len(series.ts) < 2:
+        return series
+
+    threshold = interval * GAP_FACTOR
+    ts: list[int] = []
+    value: list[float | None] = []
+    mins: list[float | None] | None = [] if series.min_value is not None else None
+    maxs: list[float | None] | None = [] if series.max_value is not None else None
+    gaps: list[tuple[int, int]] = []
+
+    for i, t in enumerate(series.ts):
+        if i and (t - series.ts[i - 1]) > threshold:
+            start, end = series.ts[i - 1], t
+            gaps.append((start, end))
+            # A null one interval after the last real sample breaks the line without
+            # shifting the position of any measured point.
+            ts.append(int(start + interval))
+            value.append(None)
+            if mins is not None:
+                mins.append(None)
+            if maxs is not None:
+                maxs.append(None)
+        ts.append(t)
+        value.append(series.value[i])
+        if mins is not None and series.min_value is not None:
+            mins.append(series.min_value[i])
+        if maxs is not None and series.max_value is not None:
+            maxs.append(series.max_value[i])
+
+    series.ts = ts
+    series.value = value
+    series.min_value = mins
+    series.max_value = maxs
+    series.gaps = gaps
+    return series

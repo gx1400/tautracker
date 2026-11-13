@@ -271,7 +271,14 @@ def create_app(settings: Settings, store: Store, poller: Any = None) -> FastAPI:
     ) -> dict[str, Any]:
         if span not in SPANS:
             raise HTTPException(status_code=400, detail=f"unknown span {span!r}")
-        s = store.series(device_id(), metric, SPANS[span])
+        s = store.series(
+            device_id(),
+            metric,
+            SPANS[span],
+            # Fallback only: used when there are too few points to measure the
+            # cadence from the data itself.
+            expected_interval=settings.poll.fast_seconds,
+        )
         return {
             "metric": s.metric,
             # Which tier answered, so the UI can say "hourly averages" rather than
@@ -281,6 +288,9 @@ def create_app(settings: Settings, store: Store, poller: Any = None) -> FastAPI:
             "value": s.value,
             "min": s.min_value,
             "max": s.max_value,
+            # Ranges with no data, so the chart can show absence rather than
+            # interpolating a straight line across an outage.
+            "gaps": s.gaps,
         }
 
     @app.get("/api/states")

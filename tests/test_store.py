@@ -175,3 +175,92 @@ def test_concurrent_reads_during_writes_return_data(tmp_path) -> None:
 
     assert not empty, f"{len(empty)} reads returned no rows while a writer was active"
     store.close()
+
+
+def test_gap_is_reported_and_breaks_the_line(store, device) -> None:
+    """A gap is an absence of ROWS, not a row containing null.
+
+    Without explicit handling a chart joins the samples either side of an outage with a
+    straight line, presenting an hour of missing data as though it had been measured.
+    """
+    now = int(time.time())
+    # 10 samples a minute apart, a 30-minute hole, then 10 more.
+    for i in range(10):
+        store.write_samples(device, now - 3600 + i * 60, {"efc_percent": 54.0})
+    for i in range(10):
+        store.write_samples(device, now - 1200 + i * 60, {"efc_percent": 55.0})
+
+    s = store.series(device, "efc_percent", 7200, now=now)
+
+    assert len(s.gaps) == 1, f"expected one gap, got {s.gaps}"
+    start, end = s.gaps[0]
+    assert end - start > 1500, "the gap should span the missing half hour"
+    # A null must be present so the renderer actually breaks the stroke.
+    assert None in s.value
+    # And the real samples must be untouched.
+    assert [v for v in s.value if v is not None] == [54.0] * 10 + [55.0] * 10
+
+
+def test_a_single_missed_poll_is_not_called_a_gap(store, device) -> None:
+    """One dropped sample is normal; flagging it would cry wolf constantly."""
+    now = int(time.time())
+    for i in range(20):
+        if i == 10:
+            continue  # skip exactly one
+        store.write_samples(device, now - 1200 + i * 60, {"tfom": 3.0})
+    s = store.series(device, "tfom", 3600, now=now)
+    assert s.gaps == [], f"a single missed poll was reported as a gap: {s.gaps}"
+
+
+def test_gap_detection_adapts_to_the_data_cadence(store, device) -> None:
+    """Cadence is measured, not assumed.
+
+    Backfilled history can carry a different interval from the live poller, and
+    trusting a configured value there turns every normal interval into a false gap.
+    """
+    now = int(time.time())
+    for i in range(15):
+        store.write_samples(device, now - 15 * 600 + i * 600, {"ffom": 1.0})  # 10 min apart
+    # An expectation an order of magnitude too small must not create spurious gaps.
+    s = store.series(device, "ffom", 24 * 3600, now=now, expected_interval=15.0)
+    assert s.gaps == [], f"measured cadence ignored: {s.gaps}"
+
+
+def test_mixed_cadences_in_one_window_are_not_all_gaps(store, device) -> None:
+    """A window can contain two cadences at once.
+
+    Backfilled history recorded every 66 s sits alongside live data polled every 15 s.
+    Estimating the cadence with a median follows whichever is more numerous, so every
+    interval of the slower one looks like an outage - which produced 726 false gaps
+    across 24 hours of real data, most of them 1.1 minutes long.
+    """
+    now = int(time.time())
+    t = now - 20000
+    # Older, slower history...
+    for _ in range(60):
+        store.write_samples(device, t, {"efc_percent": 54.0})
+        t += 66
+    # ...then a faster live cadence, more numerous so it would dominate a median.
+    for _ in range(300):
+        store.write_samples(device, t, {"efc_percent": 54.5})
+        t += 15
+
+    s = store.series(device, "efc_percent", 24 * 3600, now=now)
+    assert s.gaps == [], f"cadence change reported as {len(s.gaps)} gaps: {s.gaps[:3]}"
+
+
+def test_a_real_outage_is_still_found_among_mixed_cadences(store, device) -> None:
+    """Tolerating the slower cadence must not blind us to an actual outage."""
+    now = int(time.time())
+    t = now - 20000
+    for _ in range(60):
+        store.write_samples(device, t, {"tfom": 3.0})
+        t += 66
+    t += 1800  # a half-hour hole
+    for _ in range(300):
+        store.write_samples(device, t, {"tfom": 3.0})
+        t += 15
+
+    s = store.series(device, "tfom", 24 * 3600, now=now)
+    assert len(s.gaps) == 1, f"expected exactly the real outage, got {s.gaps}"
+    assert s.gaps[0][1] - s.gaps[0][0] > 1500

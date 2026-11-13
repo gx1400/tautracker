@@ -254,7 +254,44 @@ function cursorTooltip(unit) {
   };
 }
 
-function makePlot(host, title, zeroLine, unit) {
+/* Shades spans with no data and marks their edges, so an outage reads as missing
+ * rather than as a flat measured line. The nulls inserted server-side already break
+ * the stroke; this makes the absence legible rather than merely invisible. */
+function gapShading(getGaps) {
+  return {
+    hooks: {
+      draw: [(u) => {
+        const gaps = getGaps();
+        if (!gaps || !gaps.length) return;
+        const ctx = u.ctx;
+        const top = u.bbox.top;
+        const h = u.bbox.height;
+        ctx.save();
+        for (const [from, to] of gaps) {
+          const x0 = u.valToPos(from, "x", true);
+          const x1 = u.valToPos(to, "x", true);
+          if (!Number.isFinite(x0) || !Number.isFinite(x1)) continue;
+          const w = Math.max(x1 - x0, 1);
+          ctx.fillStyle = css("--muted") || "#8b98a9";
+          ctx.globalAlpha = 0.12;
+          ctx.fillRect(x0, top, w, h);
+          // Dashed edges, so a gap narrower than a pixel or two is still visible.
+          ctx.globalAlpha = 0.5;
+          ctx.strokeStyle = css("--muted") || "#8b98a9";
+          ctx.setLineDash([2, 3]);
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(x0, top); ctx.lineTo(x0, top + h);
+          ctx.moveTo(x1, top); ctx.lineTo(x1, top + h);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }],
+    },
+  };
+}
+
+function makePlot(host, title, zeroLine, unit, getGaps) {
   const accent = css("--accent") || "#4aa3ff";
   const grid = css("--line") || "#273041";
   const muted = css("--muted") || "#8b98a9";
@@ -272,7 +309,7 @@ function makePlot(host, title, zeroLine, unit) {
       { stroke: muted, grid: { stroke: grid, width: 1 }, ticks: { stroke: grid },
         size: 44, font: "10px ui-monospace, monospace" },
     ],
-    plugins: [cursorTooltip(unit)],
+    plugins: [gapShading(getGaps), cursorTooltip(unit)],
     series: [
       {},
       {
@@ -332,8 +369,13 @@ async function loadChart(card) {
   }
 
   // Say which storage tier answered rather than implying raw fidelity over a year.
-  resEl.textContent = d.resolution === "raw" ? "" :
+  const resText = d.resolution === "raw" ? "" :
     (d.resolution === "hour" ? "hourly min/avg/max" : "daily min/avg/max");
+  const nGaps = (d.gaps || []).length;
+  resEl.textContent = nGaps
+    ? (resText ? `${resText} · ${nGaps} gap${nGaps > 1 ? "s" : ""}` : `${nGaps} gap${nGaps > 1 ? "s" : ""}`)
+    : resText;
+  resEl.title = nGaps ? "Shaded bands mark periods with no data" : "";
 
   const vals = d.value.map((v) => (v === null ? null : v));
   const series = [d.ts, vals];
@@ -344,9 +386,15 @@ async function loadChart(card) {
   let entry = state.charts.get(metric);
   if (!entry || !host.querySelector(".uplot")) {
     host.textContent = "";
-    entry = { plot: makePlot(host, metric, card.dataset.zero === "1", card.dataset.unit), host };
+    // The plugin reads gaps lazily, so a span change updates them without
+    // rebuilding the plot.
+    entry = { gaps: [], host };
+    entry.plot = makePlot(
+      host, metric, card.dataset.zero === "1", card.dataset.unit, () => entry.gaps,
+    );
     state.charts.set(metric, entry);
   }
+  entry.gaps = d.gaps || [];
   entry.plot.setSize({ width: host.clientWidth || 300, height: 120 });
   entry.plot.setData(series);
 
