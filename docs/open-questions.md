@@ -16,7 +16,7 @@ to the maintainer one at a time.
 | Q7 | Packaging — single container vs compose stack | **decided** — Docker-first, single container |
 | Q8 | Config file format | **decided** — TOML + env overrides |
 | Q9 | Satellite history depth for the polar chart | **decided** — full per-PRN history + trails |
-| Q10 | Parser strategy for the status screen | **open** |
+| Q10 | Parser strategy for the status screen | **decided** — discrete queries first, screen for the rest |
 
 ---
 
@@ -265,11 +265,44 @@ need more care than scalar series.
 ## Q10 — Parser strategy
 
 The `:SYST:STAT?` screen is fixed-width, two-column, and varies by state (`INIT` vs
-`AVG` vs held position; tracked table present only when tracking > 0). Column-position
-parsing proved necessary in the prototype scripts — a naive field split reads the
-right-hand table's PRN as the left-hand table's signal strength.
+`AVG` vs held position; the tracked table is absent entirely when tracking is 0).
 
-**Decided:** *pending*
+**Decided: prefer discrete queries; parse the screen only for what has no discrete
+form.**
+
+The question was asked as "how do we parse the screen", but probing the firmware
+changed the answer (see `command-map.md`). **21 discrete queries are supported**,
+each returning in **0.20 s** in structured form, against **2.84 s** for the screen.
+So the screen stops being the primary data source.
+
+Resulting design:
+
+1. **Fast poll** uses discrete queries only — no screen parsing, no column arithmetic:
+   `:SYNC:TFOM?`, `:SYNC:FFOM?`, `:SYNC:STAT?`, `:SYNC:HOLD:DUR?`,
+   `:GPS:SAT:TRAC:COUN?`, `:DIAG:ROSC:EFC:ABS?`, `:DIAG:ROSC:EFC?`.
+2. **Slow poll** fetches `:SYST:STAT?` for what remains screen-only: per-satellite
+   El/Az/SS tables, synchronisation state text, holdover prediction, the six health
+   flags, survey progress and suspend reason, and the `[?]` flag.
+3. For the screen, parse by **label anchoring plus column offset**:
+   - scalar fields keyed off their labels, not line numbers (survives `INIT` / `AVG` /
+     held variants and vertical shifts between states)
+   - the satellite tables sliced by **character offset**, located from the `SS` header.
+     A whitespace split reads the right-hand table's PRN as the left-hand table's
+     signal strength — the exact bug that produced bogus SS values in the prototype.
+4. Parse strictly and emit a **per-field parse-failure metric** rather than silent
+   nulls. Two prototype bugs were caught only because a value looked wrong by eye;
+   instrumentation would have caught both immediately.
+
+Replay fixtures (Q11) turn every captured screen variant into a regression test.
+
+Accepted cost: two code paths, and column parsing stays brittle to a layout change —
+negligible risk with 1996 firmware.
+
+**Open sub-question:** `:SYNC:TINT?` / `:PTIM:TINT?` returned **E-230** (data stale or
+unavailable), not E-113 (undefined header), while the unit was in holdover. If they
+return 1PPS TI when locked, the primary accuracy metric moves to the fast poll and the
+screen is needed even less. A 150 s retest failed to settle this — the unit never
+locked during the window. **Retest during a confirmed lock.**
 
 ## Q11 — Development data source
 
