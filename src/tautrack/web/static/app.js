@@ -433,24 +433,29 @@ function renderSky(data) {
 
   svg.innerHTML = parts.join("");
 
-  const list = document.getElementById("sat-list");
-  list.textContent = "";
+  const body = document.getElementById("sat-rows");
+  body.textContent = "";
   const sats = [...(data.current || [])].sort(
     (a, b) => (b.tracked - a.tracked) || ((b.signal || 0) - (a.signal || 0)));
   if (!sats.length) {
-    list.innerHTML = '<li class="empty">no satellites reported</li>';
+    body.innerHTML = '<tr><td colspan="4" class="empty">no satellites reported</td></tr>';
     return;
   }
   for (const s of sats) {
-    const li = document.createElement("li");
-    li.className = (s.tracked ? "tracked" : "") + (s.acquiring ? " acq" : "");
-    const pct = Math.max(4, Math.min(100, ((s.signal || 0) / 170) * 100));
-    li.innerHTML =
-      `<span class="prn">${s.prn}</span>` +
-      `<span class="bar"><span style="width:${pct}%"></span></span>` +
-      `<span class="el">${s.elevation === null ? "—" : s.elevation + "°"}` +
-      `${s.signal !== null && s.signal !== undefined ? " / " + s.signal : (s.acquiring ? " acq" : "")}</span>`;
-    list.append(li);
+    const tr = document.createElement("tr");
+    tr.className = (s.tracked ? "tracked" : "") + (s.acquiring ? " acq" : "");
+    // Signal strength is an arbitrary unit on this receiver, so the bar is scaled to
+    // the highest value observed in practice (~170) rather than to a nominal maximum.
+    const pct = Math.max(3, Math.min(100, ((s.signal || 0) / 170) * 100));
+    const sig = (s.signal !== null && s.signal !== undefined)
+      ? `<span class="bar"><span style="width:${pct}%"></span></span><span class="sig">${s.signal}</span>`
+      : `<span class="sig muted">${s.acquiring ? "acq" : "—"}</span>`;
+    tr.innerHTML =
+      `<td class="prn">${s.prn}</td>` +
+      `<td class="num">${s.elevation === null ? "—" : s.elevation + "°"}</td>` +
+      `<td class="num">${s.azimuth === null ? "—" : s.azimuth + "°"}</td>` +
+      `<td class="sigcell">${sig}</td>`;
+    body.append(tr);
   }
 }
 

@@ -55,6 +55,7 @@
   <!-- Current state at a glance. -->
   <section class="tiles" id="tiles" aria-label="Current state"></section>
 
+  <div class="wide-row">
   <section class="panel sky-panel" aria-label="Satellite sky view">
     <div class="panel-head">
       <h2>Sky view <button type="button" class="help-btn" data-help="sky" aria-label="About the sky view">&#9432;</button></h2>
@@ -65,9 +66,24 @@
     </div>
     <div class="sky-wrap">
       <svg id="sky" viewBox="0 0 320 320" role="img" aria-label="Satellite azimuth and elevation"></svg>
-      <ul class="sat-list" id="sat-list"></ul>
+      <!-- A vertical table rather than wrapped chips: it fills the height alongside
+           the chart instead of leaving a tall empty block beside it. -->
+      <div class="sat-table-wrap">
+        <table class="sat-table">
+          <thead>
+            <tr><th>PRN</th><th>El</th><th>Az</th><th>Signal</th></tr>
+          </thead>
+          <tbody id="sat-rows"></tbody>
+        </table>
+      </div>
     </div>
   </section>
+
+  <section class="panel events-panel" aria-label="Events">
+    <div class="panel-head"><h2>Recent events</h2></div>
+    <ul class="events" id="events"></ul>
+  </section>
+  </div>
 
   <div class="span-bar" role="group" aria-label="Time span">
     {% for s in spans %}
@@ -91,10 +107,6 @@
     {% endfor %}
   </section>
 
-  <section class="panel events-panel" aria-label="Events">
-    <div class="panel-head"><h2>Recent events</h2></div>
-    <ul class="events" id="events"></ul>
-  </section>
 
 </main>
 
