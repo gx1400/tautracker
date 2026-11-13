@@ -145,3 +145,39 @@ def test_api_is_read_only(client) -> None:
     """No route mutates; POST to any of them should not be routed."""
     for path in ("/api/status", "/api/series", "/api/satellites", "/"):
         assert client.post(path).status_code in (404, 405)
+
+
+def test_help_endpoint_covers_every_charted_metric(client) -> None:
+    """A chart with no explanation is a chart nobody can interpret.
+
+    FFOM and TFOM in particular are meaningless without being told what they are,
+    which is exactly the gap this help text exists to close.
+    """
+    from tautrack.web.app import CHARTS
+
+    help_map = client.get("/api/help").json()
+    for chart in CHARTS:
+        assert chart["metric"] in help_map, f"no help text for charted metric {chart['metric']}"
+        entry = help_map[chart["metric"]]
+        assert entry["title"] and entry["text"]
+
+
+def test_help_is_embedded_in_the_page(client) -> None:
+    """Embedded rather than fetched, so tiles can be labelled on first paint."""
+    import json
+    import re
+
+    html = client.get("/").text
+    m = re.search(r'id="metric-help" type="application/json">(.*?)</script>', html, re.S)
+    assert m, "help JSON is not embedded in the page"
+    assert json.loads(m.group(1))["ffom"]["title"].startswith("FFOM")
+    # The popover container and at least the panel-level buttons must be present.
+    assert 'id="help-pop"' in html
+    assert html.count('class="help-btn"') >= 8
+
+
+def test_help_explains_the_two_figures_of_merit_distinctly(client) -> None:
+    """FFOM and TFOM are easily conflated; the text must separate frequency from time."""
+    h = client.get("/api/help").json()
+    assert "FREQUENCY" in h["ffom"]["text"]
+    assert "TIME" in h["tfom"]["text"]

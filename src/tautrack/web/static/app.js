@@ -18,6 +18,62 @@ const state = {
   trails: false,
 };
 
+// Metric help, embedded by the server so tiles can be labelled on first paint.
+const HELP = (() => {
+  try {
+    return JSON.parse(document.getElementById("metric-help").textContent);
+  } catch {
+    return {};
+  }
+})();
+
+/* Help popover. A title attribute alone would be invisible on a phone, where there is
+ * no hover - hence an explicit button that works for touch, keyboard and mouse alike. */
+const pop = {
+  el: null,
+  show(btn) {
+    const key = btn.dataset.help;
+    const h = HELP[key];
+    if (!h) return;
+    if (!this.el) {
+      this.el = document.getElementById("help-pop");
+      document.getElementById("help-pop-title").textContent = "";
+    }
+    document.getElementById("help-pop-title").textContent = h.title || key;
+    document.getElementById("help-pop-text").textContent = h.text || "";
+    this.el.hidden = false;
+    // Place below the control, nudged inside the viewport on narrow screens.
+    const r = btn.getBoundingClientRect();
+    const w = Math.min(340, window.innerWidth - 24);
+    this.el.style.width = w + "px";
+    let left = r.left + window.scrollX;
+    left = Math.min(left, window.scrollX + window.innerWidth - w - 12);
+    left = Math.max(left, window.scrollX + 12);
+    this.el.style.left = left + "px";
+    this.el.style.top = r.bottom + window.scrollY + 8 + "px";
+    this.current = btn;
+  },
+  hide() {
+    if (this.el) this.el.hidden = true;
+    this.current = null;
+  },
+};
+
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest(".help-btn");
+  if (btn) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (pop.current === btn) pop.hide();
+    else pop.show(btn);
+    return;
+  }
+  if (!e.target.closest(".help-pop")) pop.hide();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") pop.hide();
+});
+
 const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 
 async function getJSON(url) {
@@ -44,12 +100,25 @@ function stateClass(mode) {
   return "";
 }
 
-function tile(label, value, sub, cls) {
+function tile(label, value, sub, cls, helpKey) {
   const d = document.createElement("div");
   d.className = "tile" + (cls ? " " + cls : "");
   d.innerHTML =
     `<div class="label"></div><div class="value"></div><div class="sub"></div>`;
-  d.querySelector(".label").textContent = label;
+  const labelEl = d.querySelector(".label");
+  labelEl.textContent = label;
+  const h = helpKey ? HELP[helpKey] : null;
+  if (h) {
+    // Native title for a quick mouse hover, plus a button that also works on touch.
+    d.title = `${h.title}\n\n${h.text}`;
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "help-btn";
+    b.dataset.help = helpKey;
+    b.setAttribute("aria-label", `About ${h.title}`);
+    b.innerHTML = "&#9432;";
+    labelEl.append(b);
+  }
   d.querySelector(".value").textContent = value;
   d.querySelector(".sub").textContent = sub || "";
   return d;
@@ -73,33 +142,34 @@ function renderStatus(s) {
   tiles.textContent = "";
 
   const mode = str("mode");
-  tiles.append(tile("SmartClock", mode || "—", str("sync_banner") || "", stateClass(mode)));
+  tiles.append(tile("SmartClock", mode || "—", str("sync_banner") || "", stateClass(mode), "mode"));
 
   const ffom = num("ffom"), tfom = num("tfom");
   tiles.append(tile("FFOM / TFOM", `${fmt(ffom)} / ${fmt(tfom)}`,
-    ffom === 0 ? "loop settled" : "settling", ffom === 0 ? "ok" : "warn"));
+    ffom === 0 ? "loop settled" : "settling", ffom === 0 ? "ok" : "warn", "ffom"));
 
   const ti = num("pps_ti_ns");
   tiles.append(tile("1PPS offset", ti === null ? "—" : `${fmt(ti, 1)} ns`,
-    ti === null ? "unavailable while unlocked" : "vs GPS"));
+    ti === null ? "unavailable while unlocked" : "vs GPS", "", "pps_ti_ns"));
 
   tiles.append(tile("EFC", `${fmt(num("efc_percent"), 4)} %`,
-    num("efc_dac") !== null ? `DAC ${fmt(num("efc_dac"))}` : ""));
+    num("efc_dac") !== null ? `DAC ${fmt(num("efc_dac"))}` : "", "", "efc_percent"));
 
   const trk = num("satellites_tracked");
   tiles.append(tile("Satellites", fmt(trk),
     num("satellites_visible") !== null ? `${fmt(num("satellites_visible"))} visible` : "",
-    trk >= 4 ? "ok" : (trk >= 1 ? "warn" : "bad")));
+    trk >= 4 ? "ok" : (trk >= 1 ? "warn" : "bad"), "satellites_tracked"));
 
   const pm = str("position_mode");
-  tiles.append(tile("Position", pm || "—", str("survey_blocked") || ""));
+  tiles.append(tile("Position", pm || "—", str("survey_blocked") || "", "", "position_mode"));
 
   const pred = num("holdover_predict_us_24h");
-  tiles.append(tile("Holdover predict", pred === null ? "—" : `${fmt(pred, 1)} µs`, "per 24 h"));
+  tiles.append(tile("Holdover predict", pred === null ? "—" : `${fmt(pred, 1)} µs`,
+    "per 24 h", "", "holdover_predict_us_24h"));
 
   const health = num("health_ok");
   tiles.append(tile("Health", health === null ? "—" : (health ? "OK" : "FAULT"),
-    "", health === null ? "" : (health ? "ok" : "bad")));
+    "", health === null ? "" : (health ? "ok" : "bad"), "health_ok"));
 
   // Clocks. All unit-derived values share one format so they compare by eye.
   const c = s.clocks || {};
@@ -143,7 +213,48 @@ function humanDelta(seconds) {
 
 /* ------------------------------------------------------------------ charts */
 
-function makePlot(host, title, zeroLine) {
+/* Shows the value under the cursor. Without this a sparkline can be read for shape
+ * but not for magnitude, which is half of why anyone looks at one. */
+function cursorTooltip(unit) {
+  let tip;
+  return {
+    hooks: {
+      init: (u) => {
+        tip = document.createElement("div");
+        tip.className = "u-tip";
+        tip.hidden = true;
+        u.over.appendChild(tip);
+      },
+      setCursor: (u) => {
+        const i = u.cursor.idx;
+        if (i === null || i === undefined) {
+          tip.hidden = true;
+          return;
+        }
+        const x = u.data[0][i];
+        const y = u.data[1][i];
+        if (y === null || y === undefined) {
+          tip.hidden = true;
+          return;
+        }
+        const when = new Date(x * 1000).toLocaleString([], {
+          month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit",
+        });
+        const lo = u.data[2] ? u.data[2][i] : null;
+        const hi = u.data[3] ? u.data[3][i] : null;
+        // On downsampled spans the band matters more than the mean, so show it.
+        const range = (lo !== null && hi !== null && lo !== undefined && hi !== undefined)
+          ? `<br><span class="u-tip-range">min ${fmt(lo)} / max ${fmt(hi)}</span>` : "";
+        tip.innerHTML = `<b>${fmt(y)}</b> ${unit || ""}<br><span class="u-tip-when">${when}</span>${range}`;
+        tip.hidden = false;
+        const left = u.valToPos(x, "x");
+        tip.style.left = Math.min(Math.max(left, 4), u.bbox.width / devicePixelRatio - 4) + "px";
+      },
+    },
+  };
+}
+
+function makePlot(host, title, zeroLine, unit) {
   const accent = css("--accent") || "#4aa3ff";
   const grid = css("--line") || "#273041";
   const muted = css("--muted") || "#8b98a9";
@@ -161,6 +272,7 @@ function makePlot(host, title, zeroLine) {
       { stroke: muted, grid: { stroke: grid, width: 1 }, ticks: { stroke: grid },
         size: 44, font: "10px ui-monospace, monospace" },
     ],
+    plugins: [cursorTooltip(unit)],
     series: [
       {},
       {
@@ -232,7 +344,7 @@ async function loadChart(card) {
   let entry = state.charts.get(metric);
   if (!entry || !host.querySelector(".uplot")) {
     host.textContent = "";
-    entry = { plot: makePlot(host, metric, card.dataset.zero === "1"), host };
+    entry = { plot: makePlot(host, metric, card.dataset.zero === "1", card.dataset.unit), host };
     state.charts.set(metric, entry);
   }
   entry.plot.setSize({ width: host.clientWidth || 300, height: 120 });

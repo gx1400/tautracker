@@ -26,6 +26,7 @@
        zone offset. The host clock and the unit-vs-host delta are reported separately,
        because mixing them invites reading a timezone offset as instrument drift. -->
   <section class="panel clocks" aria-label="Clocks">
+    <button type="button" class="help-btn panel-help" data-help="clocks" aria-label="About these clocks">&#9432;</button>
     <div class="clock">
       <h3>Unit reports</h3>
       <div class="clock-value" id="clk-unit">&mdash;</div>
@@ -56,7 +57,7 @@
 
   <section class="panel sky-panel" aria-label="Satellite sky view">
     <div class="panel-head">
-      <h2>Sky view</h2>
+      <h2>Sky view <button type="button" class="help-btn" data-help="sky" aria-label="About the sky view">&#9432;</button></h2>
       <label class="trail-toggle">
         <input type="checkbox" id="trail-toggle">
         <span>trails</span>
@@ -76,9 +77,9 @@
 
   <section class="charts" id="charts" aria-label="Trends">
     {% for c in charts %}
-    <figure class="chart-card" data-metric="{{ c.metric }}" data-zero="{{ '1' if c.zero else '0' }}">
+    <figure class="chart-card" data-metric="{{ c.metric }}" data-zero="{{ '1' if c.zero else '0' }}" data-unit="{{ c.unit }}">
       <figcaption>
-        <span class="chart-title">{{ c.title }}</span>
+        <span class="chart-title">{{ c.title }}<button type="button" class="help-btn" data-help="{{ c.metric }}" aria-label="About {{ c.title }}">&#9432;</button></span>
         <span class="chart-meta">
           <span class="chart-last" data-role="last">&mdash;</span>
           <span class="chart-unit">{{ c.unit }}</span>
@@ -102,7 +103,12 @@
   <span id="foot-note">σ(τ) is Allan deviation; τ is the averaging interval</span>
 </footer>
 
+<script id="metric-help" type="application/json">{{ metric_help | safe }}</script>
 <script src="/static/uplot.iife.min.js"></script>
 <script src="/static/app.js"></script>
+<div id="help-pop" class="help-pop" role="dialog" aria-live="polite" hidden>
+  <h4 id="help-pop-title"></h4>
+  <p id="help-pop-text"></p>
+</div>
 </body>
 </html>

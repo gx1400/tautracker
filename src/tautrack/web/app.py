@@ -11,6 +11,7 @@ defaults to loopback and exposure is a deliberate configuration choice.
 
 from __future__ import annotations
 
+import json
 import time
 from datetime import UTC, datetime, timedelta, tzinfo
 from pathlib import Path
@@ -56,6 +57,143 @@ CHARTS: list[dict[str, Any]] = [
     {"metric": "tfom", "title": "TFOM", "unit": ""},
     {"metric": "holdover_predict_us_24h", "title": "Holdover prediction", "unit": "us/24h"},
 ]
+
+
+#: Plain-language help for every metric shown. Single source of truth: served as JSON
+#: and rendered into the page, so the client-built tiles and the chart captions share
+#: one wording.
+#:
+#: Written for someone who knows what a GPSDO is for but not what HP named things in
+#: 1996. The figures of merit are opaque without explanation, and several of these
+#: numbers invite misreading - EFC looks like a health percentage but is a position
+#: within a tuning range, and the 1PPS offset changes units below a nanosecond.
+METRIC_HELP: dict[str, dict[str, str]] = {
+    "mode": {
+        "title": "SmartClock mode",
+        "text": (
+            "What the oscillator control loop is doing. Power-up while acquiring "
+            "satellites; Locked to GPS once it is steering the oscillator against GPS; "
+            "Recovery while re-settling after an interruption; Holdover when usable GPS "
+            "has been lost and it is coasting on the oven oscillator alone. Holdover is "
+            "not a fault - the outputs stay usable, they just drift slowly."
+        ),
+    },
+    "ffom": {
+        "title": "FFOM - Frequency Figure of Merit",
+        "text": (
+            "The unit's own estimate of how accurate its FREQUENCY is, 0 to 3. Lower is "
+            "better; 0 means the control loop has fully settled. It rises when the loop "
+            "is disturbed - after a holdover, or while re-locking - and falls back as it "
+            "re-converges. This is the number to check when asking whether the 10 MHz "
+            "output can be trusted right now."
+        ),
+    },
+    "tfom": {
+        "title": "TFOM - Time Figure of Merit",
+        "text": (
+            "The same idea for TIME rather than frequency, 0 to 9, lower being better. "
+            "It reflects confidence in the 1PPS edge. On this receiver it rests at 3 "
+            "once locked and climbs to 9 during a cold start. Kept separate from FFOM "
+            "because an oscillator can be exactly on frequency while its pulse edge is "
+            "still offset."
+        ),
+    },
+    "pps_ti_ns": {
+        "title": "1PPS offset vs GPS",
+        "text": (
+            "How far the unit's one-pulse-per-second output sits from GPS time, in "
+            "nanoseconds - the headline accuracy figure. Signed: positive is ahead of "
+            "GPS, negative behind. The device switches to PICOSECONDS once the offset "
+            "drops below a nanosecond; that is converted here so the scale stays "
+            "consistent. Unavailable while unlocked, as there is nothing to compare to."
+        ),
+    },
+    "efc_percent": {
+        "title": "EFC - Electronic Frequency Control",
+        "text": (
+            "Where the control voltage sits within the oven oscillator's tuning range, "
+            "as a percentage. NOT a health score - mid-range is ideal, because it leaves "
+            "room to steer in both directions. The long-term trend is what matters: "
+            "crystals age, so this creeps one way over years, and once it reaches an "
+            "extreme the unit can no longer discipline the oscillator at all. That makes "
+            "it the best early warning of end-of-life."
+        ),
+    },
+    "efc_dac": {
+        "title": "EFC raw DAC count",
+        "text": (
+            "The same control value as an integer converter count rather than a rounded "
+            "percentage. Finer resolution and no floating-point rounding, which makes it "
+            "the better series for spotting slow aging across months and years."
+        ),
+    },
+    "satellites_tracked": {
+        "title": "Satellites tracked",
+        "text": (
+            "How many satellites the receiver is actually using, against how many it can "
+            "see. Two thresholds matter: FOUR are needed to survey a position, but only "
+            "ONE is needed to keep time once the position is known and held. A unit in "
+            "Hold can therefore stay locked on a single satellite indefinitely."
+        ),
+    },
+    "min_tracked_elevation": {
+        "title": "Lowest elevation tracked",
+        "text": (
+            "The angle above the horizon of the lowest satellite currently tracked. This "
+            "is the most useful antenna-siting diagnostic there is, and more telling than "
+            "signal strength: an obstructed antenna tracks only satellites high overhead, "
+            "so a value that stays high means a blocked horizon even when the signals it "
+            "does receive look strong."
+        ),
+    },
+    "holdover_predict_us_24h": {
+        "title": "Holdover prediction",
+        "text": (
+            "The unit's estimate of how far its time would drift over 24 hours if GPS "
+            "vanished, in microseconds. It improves as SmartClock learns this particular "
+            "oscillator, so a falling value means the unit is getting to know its own "
+            "crystal - the best single indicator of how far it can be trusted without GPS."
+        ),
+    },
+    "position_mode": {
+        "title": "Position mode",
+        "text": (
+            "Survey means the receiver is still averaging its own position, which needs "
+            "four satellites at once and can take hours. Hold means the position is fixed "
+            "and it no longer solves for location, only for time - which is why one "
+            "satellite then suffices."
+        ),
+    },
+    "health_ok": {
+        "title": "Health monitor",
+        "text": (
+            "A roll-up of six internal self-tests: self test, internal power, oven power, "
+            "the OCXO itself, EFC range, and the GPS receiver. Any one failing shows here "
+            "as FAULT."
+        ),
+    },
+    "sky": {
+        "title": "Sky view",
+        "text": (
+            "Satellite positions as seen from the antenna. The centre is straight "
+            "overhead, the outer rim is the horizon; north up, east right. Filled markers "
+            "are tracked, hollow ones visible but unused, and colour indicates signal "
+            "strength. The dashed orange ring is the elevation mask - anything below it is "
+            "ignored by the receiver."
+        ),
+    },
+    "clocks": {
+        "title": "Clocks",
+        "text": (
+            "All three describe the UNIT, not this computer. The first is exactly what the "
+            "device reports; 1996 firmware has a GPS week-number rollover bug that places "
+            "its DATE 1024 weeks in the past while its time-of-day stays correct. The "
+            "other two apply that offset for display only - stored data keeps what the "
+            "device actually said. This machine's own clock is shown separately so a "
+            "timezone difference is not mistaken for instrument drift."
+        ),
+    },
+}
 
 
 def _tz(name: str) -> tzinfo:
@@ -167,6 +305,11 @@ def create_app(settings: Settings, store: Store, poller: Any = None) -> FastAPI:
             "elevation_mask": mask,
         }
 
+    @app.get("/api/help")
+    def api_help() -> dict[str, Any]:
+        """Metric descriptions, so the UI and any other client share one wording."""
+        return METRIC_HELP
+
     @app.get("/api/events")
     def api_events(limit: int = Query(30, ge=1, le=200)) -> dict[str, Any]:
         return {"events": store.recent_events(limit)}
@@ -179,6 +322,7 @@ def create_app(settings: Settings, store: Store, poller: Any = None) -> FastAPI:
             {
                 "spans": list(SPANS),
                 "charts": CHARTS,
+                "metric_help": json.dumps(METRIC_HELP),
                 "version": __version__,
                 "timezone": settings.display.timezone,
             },

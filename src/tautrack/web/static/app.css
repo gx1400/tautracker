@@ -248,3 +248,63 @@ footer { color: var(--muted); font-size: 0.72rem; text-align: center; padding: 1
 .hostclock-delta.ok { color: var(--ok); }
 .hostclock-delta.warn { color: var(--warn); }
 .hostclock-delta.replay { color: var(--accent); }
+
+
+/* ---------------------------------------------------------------- help */
+/* A title attribute alone is invisible on a phone, so help is a real control: it
+   works for touch, keyboard and mouse, and the popover is shared rather than one
+   element per metric. */
+
+.help-btn {
+  appearance: none;
+  background: none;
+  border: 0;
+  color: var(--muted);
+  font-size: 0.95em;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 0.15rem;
+  margin-left: 0.3rem;
+  border-radius: 4px;
+  opacity: 0.55;
+}
+.help-btn:hover, .help-btn:focus-visible { color: var(--accent); opacity: 1; outline: none; }
+.help-btn:focus-visible { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent); }
+
+.panel-help { position: absolute; top: 0.5rem; right: 0.6rem; }
+.clocks { position: relative; }
+
+.help-pop {
+  position: absolute;
+  z-index: 50;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.7rem 0.85rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+.help-pop h4 { margin: 0 0 0.35rem; font-size: 0.78rem; color: var(--accent); }
+.help-pop p { margin: 0; color: var(--text); }
+
+/* ---------------------------------------------------------------- chart tooltip */
+
+.u-tip {
+  position: absolute;
+  top: 2px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.25rem 0.45rem;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  line-height: 1.35;
+  white-space: nowrap;
+  color: var(--text);
+  z-index: 5;
+}
+.u-tip-when { color: var(--muted); }
+.u-tip-range { color: var(--muted); }
