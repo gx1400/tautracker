@@ -273,7 +273,7 @@ async def housekeeping_loop(settings: Settings, store: Store, stop: asyncio.Even
         try:
             stats = await asyncio.to_thread(
                 housekeep,
-                store._conn,
+                store.connection,
                 settings.retention.raw_days,
                 settings.retention.hourly_days,
                 settings.retention.daily_days,

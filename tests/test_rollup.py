@@ -33,10 +33,10 @@ def test_aggregate_preserves_min_and_max_not_just_mean(store, device) -> None:
         value = 54.0 if i != 5 else 61.0  # one excursion among ordinary readings
         store.write_samples(device, base + i * 60, {"efc_percent": value})
 
-    with store._conn:
-        rollup_scalars(store._conn, "hour")
+    with store.connection:
+        rollup_scalars(store.connection, "hour")
 
-    row = store._conn.execute(
+    row = store.connection.execute(
         "SELECT count, min_value, avg_value, max_value FROM trends WHERE span='hour'"
     ).fetchone()
     assert row["count"] == 10
@@ -49,10 +49,10 @@ def test_current_partial_bucket_is_not_aggregated(store, device) -> None:
     """An open bucket would be written with an incomplete count and left stale."""
     now = int(time.time())
     store.write_samples(device, now, {"tfom": 3.0})
-    with store._conn:
-        rollup_scalars(store._conn, "hour", now=now)
+    with store.connection:
+        rollup_scalars(store.connection, "hour", now=now)
     current = (now // HOUR) * HOUR
-    row = store._conn.execute(
+    row = store.connection.execute(
         "SELECT COUNT(*) AS n FROM trends WHERE span='hour' AND bucket = ?", (current,)
     ).fetchone()
     assert row["n"] == 0
@@ -63,10 +63,10 @@ def test_rollup_is_idempotent(store, device) -> None:
     base = (int(time.time()) // HOUR) * HOUR - 3 * HOUR
     for i in range(5):
         store.write_samples(device, base + i * 60, {"ffom": float(i)})
-    with store._conn:
-        rollup_scalars(store._conn, "hour")
-        rollup_scalars(store._conn, "hour")
-    row = store._conn.execute("SELECT count FROM trends WHERE span='hour'").fetchone()
+    with store.connection:
+        rollup_scalars(store.connection, "hour")
+        rollup_scalars(store.connection, "hour")
+    row = store.connection.execute("SELECT count FROM trends WHERE span='hour'").fetchone()
     assert row["count"] == 5
 
 
@@ -74,10 +74,10 @@ def test_prune_removes_raw_beyond_retention(store, device) -> None:
     now = int(time.time())
     store.write_samples(device, now - 20 * DAY, {"efc_percent": 54.0})
     store.write_samples(device, now, {"efc_percent": 55.0})
-    with store._conn:
-        deleted = prune(store._conn, raw_days=14, hourly_days=400, daily_days=3650, now=now)
+    with store.connection:
+        deleted = prune(store.connection, raw_days=14, hourly_days=400, daily_days=3650, now=now)
     assert deleted["samples"] == 1
-    remaining = store._conn.execute("SELECT COUNT(*) AS n FROM samples").fetchone()["n"]
+    remaining = store.connection.execute("SELECT COUNT(*) AS n FROM samples").fetchone()["n"]
     assert remaining == 1
 
 
@@ -88,12 +88,12 @@ def test_housekeeping_aggregates_before_pruning(store, device) -> None:
     for i in range(6):
         store.write_samples(device, old + i * 60, {"efc_percent": 54.0 + i})
 
-    housekeep(store._conn, raw_days=14, hourly_days=400, daily_days=3650, now=now)
+    housekeep(store.connection, raw_days=14, hourly_days=400, daily_days=3650, now=now)
 
     # Raw rows are gone...
-    assert store._conn.execute("SELECT COUNT(*) AS n FROM samples").fetchone()["n"] == 0
+    assert store.connection.execute("SELECT COUNT(*) AS n FROM samples").fetchone()["n"] == 0
     # ...but their aggregate survived, with the extremes intact.
-    row = store._conn.execute(
+    row = store.connection.execute(
         "SELECT count, min_value, max_value FROM trends WHERE span='hour'"
     ).fetchone()
     assert row is not None
@@ -112,8 +112,8 @@ def test_satellite_trends_keep_appearance_count(store, device) -> None:
             base + i * 60,
             [Satellite(prn=3, elevation=50 + i, azimuth=100, signal=40 + i, tracked=i % 2 == 0)],
         )
-    housekeep(store._conn, now=int(time.time()))
-    row = store._conn.execute(
+    housekeep(store.connection, now=int(time.time()))
+    row = store.connection.execute(
         "SELECT count, tracked_count, max_signal, min_elevation FROM sat_trends "
         "WHERE span='hour' AND prn=3"
     ).fetchone()

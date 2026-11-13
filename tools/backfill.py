@@ -130,10 +130,10 @@ def main() -> int:
         print(f"fast rows imported: {fast_rows}")
 
     if not args.no_rollup:
-        stats = housekeep(store._conn, raw_days=14, hourly_days=400, daily_days=3650)
+        stats = housekeep(store.connection, raw_days=14, hourly_days=400, daily_days=3650)
         print(f"rollup: {stats}")
 
-    row = store._conn.execute(
+    row = store.connection.execute(
         "SELECT MIN(ts) AS a, MAX(ts) AS b, COUNT(*) AS n FROM samples"
     ).fetchone()
     if row and row["n"]:

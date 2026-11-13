@@ -8,6 +8,7 @@ knowing whether the answer comes from raw samples or an aggregate (Q5).
 from __future__ import annotations
 
 import sqlite3
+import threading
 import time
 from dataclasses import dataclass
 from importlib import resources
@@ -37,14 +38,104 @@ class Series:
     max_value: list[float | None] | None = None
 
 
+class _Result:
+    """Rows already materialised under the lock.
+
+    Returning a live cursor would let ``.fetchone()`` run outside the lock, which is
+    the race this wrapper exists to prevent.
+    """
+
+    __slots__ = ("_rows", "rowcount")
+
+    def __init__(self, rows: list[Any], rowcount: int = -1) -> None:
+        self._rows = rows
+        #: Rows affected by a DML statement; the rollup and prune both report on it.
+        self.rowcount = rowcount
+
+    def fetchone(self) -> Any:
+        return self._rows[0] if self._rows else None
+
+    def fetchall(self) -> list[Any]:
+        return self._rows
+
+    def __iter__(self):
+        return iter(self._rows)
+
+
+class _LockedConnection:
+    """Serialises all access to one sqlite3.Connection.
+
+    The connection is shared by the poller (writing) and the web threadpool (reading
+    many series concurrently for the charts). ``check_same_thread=False`` silences
+    sqlite3's guard but does **not** make concurrent ``execute()`` safe: cursor state
+    interleaves, and reads overlapping a write come back empty.
+
+    That surfaced as charts rendering "no data yet" while their own tiles showed
+    values, with a *different* subset failing on each page load - the hallmark of a
+    race rather than missing data.
+
+    A single lock is ample here: at roughly four writes a minute against a handful of
+    reads per page, contention is irrelevant next to correctness.
+    """
+
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self._conn = conn
+        self._lock = threading.RLock()
+
+    def execute(self, sql: str, parameters: Any = ()) -> _Result:
+        with self._lock:
+            cur = self._conn.execute(sql, parameters)
+            return _Result(cur.fetchall(), cur.rowcount)
+
+    def executemany(self, sql: str, seq: Any) -> None:
+        with self._lock:
+            self._conn.executemany(sql, seq)
+
+    def executescript(self, sql: str) -> None:
+        with self._lock:
+            self._conn.executescript(sql)
+
+    def close(self) -> None:
+        with self._lock:
+            self._conn.close()
+
+    # Transaction context manager, holding the lock for its whole duration so a
+    # concurrent reader cannot observe a half-applied batch.
+    def __enter__(self):
+        self._lock.acquire()
+        self._conn.__enter__()
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        try:
+            self._conn.__exit__(*exc)
+        finally:
+            self._lock.release()
+
+    @property
+    def raw(self) -> sqlite3.Connection:
+        """The underlying connection. Use only where the lock is already held."""
+        return self._conn
+
+
 class Store:
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(self.path, check_same_thread=False, timeout=15.0)
-        self._conn.row_factory = sqlite3.Row
+        raw = sqlite3.connect(self.path, check_same_thread=False, timeout=15.0)
+        raw.row_factory = sqlite3.Row
+        self._conn = _LockedConnection(raw)
         self._metric_ids: dict[str, int] = {}
         self._init_schema()
+
+    @property
+    def connection(self) -> _LockedConnection:
+        """The locked connection, for the rollup's multi-statement batch.
+
+        Its ``with`` block holds the lock for the whole transaction, so housekeeping
+        cannot interleave with a poll or with a chart query.
+        """
+        return self._conn
 
     def close(self) -> None:
         self._conn.close()

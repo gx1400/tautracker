@@ -120,7 +120,7 @@ def test_screens_are_kept_only_once_per_signature(store, device) -> None:
     store.write_screen(device, now, "sig-a", "screen one")
     store.write_screen(device, now + 60, "sig-a", "screen one again")
     store.write_screen(device, now + 120, "sig-b", "different state")
-    rows = store._conn.execute("SELECT COUNT(*) AS n FROM screens").fetchone()["n"]
+    rows = store.connection.execute("SELECT COUNT(*) AS n FROM screens").fetchone()["n"]
     assert rows == 2
 
 
@@ -130,3 +130,48 @@ def test_events_are_returned_newest_first(store) -> None:
     events = store.recent_events(10)
     assert events[0]["message"] == "second"
     assert events[0]["level"] == "error"
+
+
+def test_concurrent_reads_during_writes_return_data(tmp_path) -> None:
+    """Reads must not come back empty while another thread is writing.
+
+    One connection is shared by the poller and the web threadpool. With
+    ``check_same_thread=False`` and no lock, cursor state interleaves and reads that
+    overlap a write return empty result sets - which showed up as charts rendering
+    "no data yet" while their tiles had values, a different subset failing each time.
+    """
+    import threading
+
+    store = Store(tmp_path / "race.db")
+    device = store.upsert_device({"model": "Z3801A", "serial": "R1", "firmware": "f"})
+    now = int(time.time())
+    for i in range(200):
+        store.write_samples(device, now - 200 + i, {"efc_percent": 54.0 + i * 0.001})
+
+    empty: list[str] = []
+    stop = threading.Event()
+
+    def writer() -> None:
+        t = now
+        while not stop.is_set():
+            t += 1
+            store.write_samples(device, t, {"efc_percent": 55.0})
+
+    def reader() -> None:
+        for _ in range(60):
+            s = store.series(device, "efc_percent", 3600, now=now)
+            if not s.ts:
+                empty.append("empty read")
+
+    w = threading.Thread(target=writer, daemon=True)
+    w.start()
+    readers = [threading.Thread(target=reader) for _ in range(6)]
+    for r in readers:
+        r.start()
+    for r in readers:
+        r.join()
+    stop.set()
+    w.join(timeout=2)
+
+    assert not empty, f"{len(empty)} reads returned no rows while a writer was active"
+    store.close()
