@@ -1,6 +1,6 @@
 [project]
 name = "tautrack"
-version = "0.1.0"
+version = "0.2.0"
 description = "Monitoring, logging and trend analysis for GPS-disciplined oscillators"
 readme = "README.md"
 license = { file = "LICENSE" }
