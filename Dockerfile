@@ -2,7 +2,7 @@
 
 # Docker is the primary deployment target (Q7). Two stages so build tooling does not
 # ship in the runtime image.
-FROM python:3.12-slim AS build
+FROM python:3.15-slim AS build
 
 ARG VERSION=0.0.0-dev
 WORKDIR /src
@@ -15,7 +15,7 @@ RUN python -m pip install --no-cache-dir --upgrade pip build \
     && python -m pip wheel --no-cache-dir --wheel-dir /wheels .
 
 
-FROM python:3.12-slim AS runtime
+FROM python:3.15-slim AS runtime
 
 ARG VERSION=0.0.0-dev
 LABEL org.opencontainers.image.title="tautrack" \
