@@ -373,6 +373,18 @@ installed. This does **not** reverse Q12: `tools/dev-bridge.py` is development t
 excluded from the product, and the docstring says so. ser2net remains the supported
 path.
 
+**Superseded:** `tools/dev-bridge.py` was replaced by `tools/ser2net_emu.py`, which
+reads a genuine ser2net 4.x YAML config and mirrors its CLI flags. The config written
+for the emulator works unchanged against the real binary, so the swap costs nothing -
+which the ad-hoc bridge could not offer.
+
+Building it also demonstrated Q12's argument rather than contradicting it. The first
+version held a lock across the reader thread's blocking serial read and re-acquired it
+immediately, starving the writer; queries stopped reaching the device and every reply
+timed out with "0 read(s), 0 byte(s)". It presented exactly as a dead instrument, which
+is the failure mode cited when rejecting a shipped bridge. pyserial supports one reader
+plus one writer thread, so the lock was the bug, not the protection.
+
 **Unavoidable consequence, worth stating plainly:** the characterisation logger and the
 container cannot both hold the device. One SCPI session only (C-2). A bridge that
 fanned out to several TCP clients would let both *connect*, but their replies would

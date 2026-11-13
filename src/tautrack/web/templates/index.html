@@ -22,23 +22,32 @@
 
 <main>
 
-  <!-- Clocks. The unit's own reading is shown verbatim, including [?]; the corrected
-       value adds the GPS week-rollover offset back for display only. -->
+  <!-- Clocks. All three describe the UNIT, so UTC and local differ by exactly the
+       zone offset. The host clock and the unit-vs-host delta are reported separately,
+       because mixing them invites reading a timezone offset as instrument drift. -->
   <section class="panel clocks" aria-label="Clocks">
     <div class="clock">
       <h3>Unit reports</h3>
       <div class="clock-value" id="clk-unit">&mdash;</div>
-      <div class="clock-note" id="clk-unit-note"></div>
+      <div class="clock-note" id="clk-unit-note">verbatim, date affected by rollover</div>
     </div>
     <div class="clock">
-      <h3>Corrected UTC</h3>
+      <h3>Unit &rarr; UTC</h3>
       <div class="clock-value" id="clk-utc">&mdash;</div>
       <div class="clock-note">rollover offset applied</div>
     </div>
     <div class="clock">
-      <h3>Local <span class="tz" id="clk-tzname">{{ timezone }}</span></h3>
+      <h3>Unit &rarr; <span class="tz" id="clk-tzname">{{ timezone }}</span></h3>
       <div class="clock-value" id="clk-local">&mdash;</div>
       <div class="clock-note" id="clk-local-note"></div>
+    </div>
+  </section>
+
+  <section class="panel hostclock" aria-label="Host clock">
+    <div class="hostclock-row">
+      <span class="hostclock-label">This machine</span>
+      <span class="hostclock-value" id="clk-host">&mdash;</span>
+      <span class="hostclock-delta" id="clk-delta"></span>
     </div>
   </section>
 

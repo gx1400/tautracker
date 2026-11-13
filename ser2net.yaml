@@ -1,0 +1,24 @@
+# ser2net configuration for the HP Z3801A.
+#
+# Works with real ser2net 4.x AND with tools/ser2net_emu.py, so the emulator can be
+# swapped for the real binary without touching this file:
+#
+#   ser2net                 -c ser2net.yaml -n -d
+#   python tools/ser2net_emu.py -c ser2net.yaml -n -d
+#
+# '19200o71' is ser2net notation for 19200 baud, Odd parity, 7 data bits, 1 stop bit.
+# That is the Z3801A's line setting and it is unusual - most equipment is 8-N-1, and a
+# device server stuck on 8-N-1 cannot talk to these units at all.
+%YAML 1.1
+---
+connection: &gpsdo
+  accepter: tcp,4196
+  connector: serialdev,COM7,19200o71,local
+  options:
+    # SCPI is request/response against shared device state, so a second reader
+    # consumes the first's replies. One client only.
+    max-connections: 1
+    kickolduser: false
+    # Deliberately NO banner. ser2net transmits a banner on connect, and those bytes
+    # arrive ahead of the first reply and corrupt the parse. Same hazard as a hardware
+    # device server's heartbeat and registration packets.

@@ -32,3 +32,5 @@ data/
 .DS_Store
 Thumbs.db
 .venv/
+config.live.toml
+config.tcp.toml

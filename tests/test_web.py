@@ -65,14 +65,45 @@ def test_status_exposes_device_and_latest(client) -> None:
 
 def test_clock_applies_the_rollover_correction_for_display_only(client) -> None:
     """1996 firmware reports 1024 GPS weeks behind; the stored value stays untouched."""
-    d = client.get("/api/status").json()
-    clocks = d["clocks"]
-    assert clocks["unit_reported"] == "12:00:00 30 Mar 2007"
-    # 2007 + 7168 days lands in 2026.
+    clocks = client.get("/api/status").json()["clocks"]
+    # Reported time is normalised to the same format as the corrected values so the
+    # three can be compared by eye.
+    assert clocks["unit_reported"] == "2007-03-30 12:00:00"
+    assert clocks["unit_reported_raw"] == "12:00:00 30 Mar 2007"
     assert clocks["unit_corrected_utc"].startswith("2026-")
     assert clocks["rollover_days"] == 7168
     # The raw sample is unchanged.
+    d = client.get("/api/status").json()
     assert d["latest"]["gps_time"]["text"] == "12:00:00 30 Mar 2007"
+
+
+def test_all_three_clocks_describe_the_unit(client) -> None:
+    """UTC and local must differ by exactly the zone offset, nothing else.
+
+    An earlier version put the host's wall clock in the third slot, so a UTC-6 zone
+    looked like six hours of instrument drift.
+    """
+    from datetime import datetime
+
+    c = client.get("/api/status").json()["clocks"]
+    utc = datetime.fromisoformat(c["unit_corrected_utc"])
+    local = datetime.fromisoformat(c["unit_corrected_local"])
+    # America/Chicago is UTC-6 in November.
+    assert (utc - local).total_seconds() == 6 * 3600
+
+
+def test_unit_vs_host_delta_is_reported_once_and_explicitly(client) -> None:
+    """Any real disagreement with this machine belongs in one labelled field."""
+    c = client.get("/api/status").json()["clocks"]
+    assert "host_delta_seconds" in c
+    assert isinstance(c["host_delta_seconds"], (int, float))
+
+
+def test_replay_transport_is_flagged_as_not_live(client) -> None:
+    """Under replay the delta is the age of a recording, not instrument error."""
+    c = client.get("/api/status").json()["clocks"]
+    # The fixture uses the default transport, which is replay.
+    assert c["live"] is False
 
 
 def test_series_returns_points_and_labels_the_tier(client) -> None:

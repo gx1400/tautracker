@@ -235,3 +235,16 @@ main {
 footer { color: var(--muted); font-size: 0.72rem; text-align: center; padding: 1rem; border-top: 1px solid var(--line); margin-top: 0.5rem; }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* ---------------------------------------------------------------- host clock */
+/* Deliberately separated from the unit clocks: putting the host's wall clock beside
+   the unit's corrected time made a timezone offset look like instrument drift. */
+
+.hostclock { padding: 0.55rem 1rem; }
+.hostclock-row { display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; }
+.hostclock-label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); }
+.hostclock-value { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 0.9rem; }
+.hostclock-delta { font-size: 0.72rem; color: var(--muted); font-family: var(--mono); }
+.hostclock-delta.ok { color: var(--ok); }
+.hostclock-delta.warn { color: var(--warn); }
+.hostclock-delta.replay { color: var(--accent); }

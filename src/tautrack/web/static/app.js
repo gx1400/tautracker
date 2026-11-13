@@ -101,21 +101,44 @@ function renderStatus(s) {
   tiles.append(tile("Health", health === null ? "—" : (health ? "OK" : "FAULT"),
     "", health === null ? "" : (health ? "ok" : "bad")));
 
-  // Clocks
+  // Clocks. All unit-derived values share one format so they compare by eye.
   const c = s.clocks || {};
-  const unit = document.getElementById("clk-unit");
-  unit.textContent = c.unit_reported || "—";
-  document.getElementById("clk-unit-note").textContent =
-    (c.unit_reported || "").includes("[?]") ? "time not yet confirmed by GPS" : "as reported";
-  document.getElementById("clk-utc").textContent = c.unit_corrected_utc
-    ? c.unit_corrected_utc.replace("T", " ").replace("+00:00", "")
-    : "—";
-  document.getElementById("clk-local").textContent = c.host_local
-    ? c.host_local.replace("T", " ").slice(0, 19)
-    : "—";
+  document.getElementById("clk-unit").textContent = c.unit_reported || "—";
+  document.getElementById("clk-unit-note").textContent = c.unit_unconfirmed
+    ? "time not yet confirmed by GPS"
+    : "verbatim, date affected by rollover";
+  document.getElementById("clk-utc").textContent = c.unit_corrected_utc || "—";
+  document.getElementById("clk-local").textContent = c.unit_corrected_local || "—";
   document.getElementById("clk-local-note").textContent =
-    c.rollover_days ? `host clock · unit offset ${c.rollover_days} d` : "host clock";
-  document.getElementById("clk-tzname").textContent = c.timezone || "";
+    c.rollover_days ? `offset ${c.rollover_days} d applied` : "no rollover offset";
+  document.getElementById("clk-tzname").textContent = c.zone_label || c.timezone || "";
+
+  document.getElementById("clk-host").textContent =
+    c.host_local ? `${c.host_local} ${c.zone_label || ""}`.trim() : "—";
+
+  // The delta is only meaningful against a live device. Under replay it is just the
+  // age of the recorded screen, so say so rather than implying instrument error.
+  const deltaEl = document.getElementById("clk-delta");
+  if (c.host_delta_seconds === null || c.host_delta_seconds === undefined) {
+    deltaEl.textContent = "";
+    deltaEl.className = "hostclock-delta";
+  } else if (c.live === false) {
+    deltaEl.textContent = `replay — recorded ${humanDelta(c.host_delta_seconds)} ago`;
+    deltaEl.className = "hostclock-delta replay";
+  } else {
+    const d = c.host_delta_seconds;
+    deltaEl.textContent = `unit ${d >= 0 ? "behind" : "ahead of"} host by ${humanDelta(Math.abs(d))}`;
+    deltaEl.className = "hostclock-delta " + (Math.abs(d) <= 2 ? "ok" : "warn");
+  }
+}
+
+function humanDelta(seconds) {
+  const s = Math.round(Math.abs(seconds));
+  if (s < 90) return `${s}s`;
+  const m = Math.round(s / 60);
+  if (m < 90) return `${m}m`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
 }
 
 /* ------------------------------------------------------------------ charts */

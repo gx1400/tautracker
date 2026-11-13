@@ -107,7 +107,7 @@ def create_app(settings: Settings, store: Store, poller: Any = None) -> FastAPI:
                 "connected": bool(getattr(poller, "connected", False)),
                 "last_error": getattr(poller, "last_error", None),
                 "latest": {},
-                "clocks": _clocks(settings, None),
+                "clocks": _clocks(settings, None, live=settings.transport.kind != "replay"),
             }
         latest = store.latest(int(dev["id"]))
         unit_time = (latest.get("gps_time") or {}).get("text")
@@ -121,7 +121,8 @@ def create_app(settings: Settings, store: Store, poller: Any = None) -> FastAPI:
             "last_error": getattr(poller, "last_error", None),
             "last_poll": getattr(poller, "last_poll_ts", None),
             "latest": latest,
-            "clocks": _clocks(settings, unit_time),
+            "transport": settings.transport.kind,
+            "clocks": _clocks(settings, unit_time, live=settings.transport.kind != "replay"),
             "version": __version__,
         }
 
@@ -186,19 +187,34 @@ def create_app(settings: Settings, store: Store, poller: Any = None) -> FastAPI:
     return app
 
 
-def _clocks(settings: Settings, unit_time: str | None) -> dict[str, Any]:
-    """Three clocks (FR-18).
+def _clocks(settings: Settings, unit_time: str | None, live: bool = True) -> dict[str, Any]:
+    """Clocks (FR-18), all three describing the **unit**, with the host shown apart.
 
-    The unit's reported time is shown verbatim, including any ``[?]``. Because 1996
-    firmware reports a date 1024 GPS weeks behind actual, the corrected values add the
-    configured offset back - a display correction only. Stored samples keep exactly
-    what the device said.
+    An earlier version showed the unit's corrected time next to the *host's* local
+    clock, which invited reading them as one instant in two zones. They are not: with a
+    UTC-6 timezone that looks like six hours of drift even when nothing is wrong. All
+    three unit clocks now derive from the same reported instant, so UTC and local
+    differ by exactly the zone offset, and any real disagreement with this machine is
+    reported once, explicitly, as ``host_delta_seconds``.
+
+    The device's time-of-day is UTC; only its *date* is wrong, by 1024 GPS weeks on
+    1996 firmware. The offset is applied for display only - stored samples keep exactly
+    what was reported.
+
+    Formats are normalised to ``YYYY-MM-DD HH:MM:SS`` throughout, including the
+    device's own ``HH:MM:SS DD Mon YYYY``, so the three can be compared by eye.
     """
     now = datetime.now(UTC)
     tz = _tz(settings.display.timezone)
     offset = timedelta(days=settings.display.gps_rollover_days)
+    zone_label = now.astimezone(tz).strftime("%Z") or settings.display.timezone
 
-    corrected: str | None = None
+    reported_iso: str | None = None
+    corrected_utc: str | None = None
+    corrected_local: str | None = None
+    delta: float | None = None
+    unconfirmed = bool(unit_time and "[?]" in unit_time)
+
     if unit_time:
         raw = unit_time.replace("[?]", "").strip()
         for fmt in ("%H:%M:%S %d %b %Y", "%H:%M:%S %d %B %Y"):
@@ -206,15 +222,28 @@ def _clocks(settings: Settings, unit_time: str | None) -> dict[str, Any]:
                 parsed = datetime.strptime(raw, fmt).replace(tzinfo=UTC)
             except ValueError:
                 continue
-            corrected = (parsed + offset).isoformat()
+            reported_iso = parsed.strftime("%Y-%m-%d %H:%M:%S")
+            fixed = parsed + offset
+            corrected_utc = fixed.strftime("%Y-%m-%d %H:%M:%S")
+            corrected_local = fixed.astimezone(tz).strftime("%Y-%m-%d %H:%M:%S")
+            delta = (now - fixed).total_seconds()
             break
 
     return {
-        "unit_reported": unit_time,
-        "unit_corrected_utc": corrected,
-        "host_utc": now.isoformat(),
-        "host_local": now.astimezone(tz).isoformat(),
+        "unit_reported_raw": unit_time,
+        "unit_reported": reported_iso,
+        "unit_corrected_utc": corrected_utc,
+        "unit_corrected_local": corrected_local,
+        "unit_unconfirmed": unconfirmed,
+        "host_utc": now.strftime("%Y-%m-%d %H:%M:%S"),
+        "host_local": now.astimezone(tz).strftime("%Y-%m-%d %H:%M:%S"),
+        # Positive means the unit's reported time lags this machine. Under replay this
+        # is simply the age of the recorded screen, not instrument error - so the UI
+        # must say which transport produced it.
+        "host_delta_seconds": None if delta is None else round(delta, 1),
+        "live": live,
         "timezone": settings.display.timezone,
+        "zone_label": zone_label,
         "rollover_days": settings.display.gps_rollover_days,
         "epoch": int(time.time()),
     }
