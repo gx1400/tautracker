@@ -306,8 +306,25 @@ function makePlot(host, title, zeroLine, unit, getGaps) {
     axes: [
       { stroke: muted, grid: { stroke: grid, width: 1 }, ticks: { stroke: grid },
         size: 28, font: "10px ui-monospace, monospace" },
-      { stroke: muted, grid: { stroke: grid, width: 1 }, ticks: { stroke: grid },
-        size: 44, font: "10px ui-monospace, monospace" },
+      {
+        stroke: muted,
+        grid: { stroke: grid, width: 1 },
+        ticks: { stroke: grid },
+        font: "10px ui-monospace, monospace",
+        // Size the gutter to the widest label actually drawn. A fixed 44px clipped
+        // six-figure values - the raw EFC DAC count rendered as "i9,300" with the
+        // leading digits of 809,300 cut off, which is worse than useless.
+        size: (u, values) => {
+          const widest = (values || []).reduce((m, v) => Math.max(m, String(v).length), 3);
+          return Math.min(14 + widest * 6.2, 80);
+        },
+        // Thousands separators on a six-figure DAC count, which is otherwise a wall
+        // of digits; small values keep their decimals.
+        values: (u, ticks) =>
+          ticks.map((v) =>
+            Math.abs(v) >= 10000 ? v.toLocaleString() : String(v),
+          ),
+      },
     ],
     plugins: [gapShading(getGaps), cursorTooltip(unit)],
     series: [

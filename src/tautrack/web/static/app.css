@@ -340,3 +340,16 @@ footer { color: var(--muted); font-size: 0.72rem; text-align: center; padding: 1
 }
 .u-tip-when { color: var(--muted); }
 .u-tip-range { color: var(--muted); }
+
+
+/* A long SmartClock value such as "Locked to GPS: stabilizing frequency" wrapped to
+   three lines and stretched the whole tile row, leaving the other seven mostly empty.
+   Clamp it to two lines and let the full text live in the tooltip. */
+.tile .value {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.tiles { align-items: start; }
