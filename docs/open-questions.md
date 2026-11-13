@@ -14,8 +14,8 @@ to the maintainer one at a time.
 | Q12 | Platform serial strategy — ship a bridge or document one? | **decided** — document ser2net |
 | Q6 | Charting library | **decided** — uPlot + hand-rolled SVG polar |
 | Q7 | Packaging — single container vs compose stack | **decided** — Docker-first, single container |
-| Q8 | Config file format | **open** |
-| Q9 | Satellite history depth for the polar chart | pending |
+| Q8 | Config file format | **decided** — TOML + env overrides |
+| Q9 | Satellite history depth for the polar chart | **open** |
 | Q10 | Parser strategy for the status screen | pending |
 
 ---
@@ -200,9 +200,33 @@ Accepted cost: two rendering approaches in the codebase.
 
 ## Q8 — Config file format
 
-TOML / YAML / env-only, and the precedence rules for environment overrides.
+Config carries: transport selection and parameters, poll cadences, retention tiers,
+timezone, the GPS week-rollover offset, and the OTLP endpoint.
 
-**Decided:** *pending*
+**Decided: TOML, with `TAUTRACK_`-prefixed environment overrides.**
+
+- `config.toml` is the file. Sections: `[transport]`, `[poll]`, `[retention]`,
+  `[otel]`, `[display]`.
+- Any value is overridable by environment variable using `__` for nesting, the
+  established Pydantic Settings convention — e.g.
+  `TAUTRACK_TRANSPORT__PORT=/dev/ttyUSB0`.
+- Precedence: environment > file > built-in defaults.
+
+Rationale:
+
+- **`tomllib` is in the standard library** from Python 3.11, so parsing costs zero
+  dependencies. Every dependency added to the base runtime is one more thing that can
+  break a container build or need a security update across the years this will run —
+  and protecting clone-and-run has driven Q1, Q3 and Q5.
+- TOML is unambiguous about types: `baudrate = 19200` is an integer, `parity = "odd"`
+  a string. YAML's implicit coercion is a real hazard in a config containing values
+  like `parity: o` or a bare `COM7`.
+- The `__` nesting convention gives env overrides without bespoke merge logic.
+
+Accepted cost: TOML is less familiar than YAML to people arriving from Compose,
+Kubernetes or Home Assistant, and nests less readably. Judged minor here because the
+config is flat — a handful of short sections with no deep structure, which is where
+YAML's readability advantage would otherwise show.
 
 ## Q9 — Satellite history depth
 
