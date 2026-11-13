@@ -15,8 +15,8 @@ to the maintainer one at a time.
 | Q6 | Charting library | **decided** — uPlot + hand-rolled SVG polar |
 | Q7 | Packaging — single container vs compose stack | **decided** — Docker-first, single container |
 | Q8 | Config file format | **decided** — TOML + env overrides |
-| Q9 | Satellite history depth for the polar chart | **open** |
-| Q10 | Parser strategy for the status screen | pending |
+| Q9 | Satellite history depth for the polar chart | **decided** — full per-PRN history + trails |
+| Q10 | Parser strategy for the status screen | **open** |
 
 ---
 
@@ -230,10 +230,37 @@ YAML's readability advantage would otherwise show.
 
 ## Q9 — Satellite history depth
 
-Whether the polar chart shows only the current fix or trails over a configurable
-window, and how much per-PRN history is retained (FR-11 cost).
+Per-PRN data is the one series that multiplies: ~12 PRNs per slow poll is ~17k
+rows/day, roughly a third of total volume (FR-11).
 
-**Decided:** *pending*
+**Decided: store full per-PRN history. Sky plot shows the current fix, with optional
+trails over the selected span.**
+
+- Per-PRN rows follow the same tiering as everything else (Q3): raw for ~14 days, then
+  hourly trends.
+- The chart defaults to the current constellation; trails are a toggle.
+
+Rationale, which is empirical rather than theoretical — across two days of monitoring a
+real installation, almost every substantive conclusion came from per-PRN **history**,
+not instantaneous state:
+
+- The antenna-swap verdict was decided by *lowest elevation acquired* (22 degrees vs
+  38-39), not by signal strength, which actually fell.
+- Lock quality was found to track the **strongest available satellite**, which is only
+  visible across hours.
+- A misdiagnosis of local RFI was corrected by a same-satellite comparison over time
+  (PRN 2 held 45 -> 42 while the fleet mean fell 66 -> 39, showing the drop was
+  compositional).
+
+None of those are answerable from a current-fix snapshot. Discarding the data to save a
+third of a small storage budget would trade away the tool's main analytical value.
+
+Implementation note for the rollup: per-PRN trends must keep **both** the aggregated
+signal strength *and* the appearance count per bucket. How often a PRN was present is
+as informative as how strong it was, and an average alone hides it.
+
+Accepted cost: sparse-series handling in the schema, and per-PRN rollup semantics that
+need more care than scalar series.
 
 ## Q10 — Parser strategy
 
