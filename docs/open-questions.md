@@ -10,9 +10,9 @@ to the maintainer one at a time.
 | Q3 | Local storage engine and retention tiering | **decided** — SQLite, app-side rollups |
 | Q4 | How much ADEV analysis to implement | **decided** — long-tau ADEV only |
 | Q5 | UI stack — server-rendered vs SPA | **decided** — Jinja + htmx |
-| Q6 | Charting library | pending |
 | Q11 | Development data source, given Docker serial passthrough limits | **decided** — replay transport |
-| Q12 | Platform serial strategy — ship a bridge or document one? | **open** |
+| Q12 | Platform serial strategy — ship a bridge or document one? | **decided** — document ser2net |
+| Q6 | Charting library | **open** |
 | Q7 | Packaging — single container vs compose stack | **decided** — Docker-first, single container |
 | Q8 | Config file format | pending |
 | Q9 | Satellite history depth for the polar chart | pending |
@@ -238,4 +238,23 @@ serial bridge is the answer, and ser2net now ships Windows and macOS builds.
 
 The question is whether tautrack also ships its own bridge helper.
 
-**Decided:** *pending*
+**Decided: document ser2net, ship nothing.** tautrack speaks only `serial`, `tcp` and
+`replay`.
+
+Rationale:
+
+- ser2net is mature, actively maintained (4.6.6, November 2025) and now ships Windows
+  and macOS builds, so the problem is solved by someone else.
+- The need is **transitional**: Linux hosts never needed a bridge, and a hardware TCP
+  gateway makes it moot.
+- A naive bridge is deceptively easy to get subtly wrong — client disconnects, dropped
+  bytes mid-reply, corrupted prompt framing. Those failures masquerade as device
+  faults, the same trap as the device-server heartbeat packets already documented in
+  `scope.md`.
+
+Accepted cost: first-run friction on Windows and macOS, where a second component must
+be installed before any data appears.
+
+A disposable bridge *was* written to validate SCPI over TCP (see
+`transport-validation.md`). It is a throwaway test tool and is not part of the
+project.
