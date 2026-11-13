@@ -363,3 +363,24 @@ be installed before any data appears.
 A disposable bridge *was* written to validate SCPI over TCP (see
 `transport-validation.md`). It is a throwaway test tool and is not part of the
 project.
+
+---
+
+## Addendum — development bridge shim
+
+The maintainer asked for a shim so a container can reach the device before ser2net is
+installed. This does **not** reverse Q12: `tools/dev-bridge.py` is development tooling,
+excluded from the product, and the docstring says so. ser2net remains the supported
+path.
+
+**Unavoidable consequence, worth stating plainly:** the characterisation logger and the
+container cannot both hold the device. One SCPI session only (C-2). A bridge that
+fanned out to several TCP clients would let both *connect*, but their replies would
+interleave and corrupt — exactly the failure Q12 cited. So the shim refuses a second
+client rather than silently accepting it, and the handover is explicit:
+
+- `use-bridge.ps1` — stop the logger, disable the watchdog, start the bridge
+- `use-logger.ps1` — stop the bridge, restart the logger, re-arm the watchdog
+
+The conflict resolves itself once tautrack stores data, because then tautrack *is* the
+characterisation capture.
