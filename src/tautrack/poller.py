@@ -120,6 +120,10 @@ class Poller:
                     self.store.log_event(
                         "warning", "poller", f"{q.command} returned stale data (E-230)"
                     )
+                # The prompt reports the state of the error QUEUE, not of this command.
+                # Leaving an entry queued makes every later reply's prompt read E-nnn,
+                # which previously caused good status screens to be discarded. Drain it.
+                await session.query("*CLS")
                 continue
             if q.text_parse is not None:
                 if (text := q.text_parse(reply.body)) is not None:
@@ -143,9 +147,18 @@ class Poller:
     async def _poll_screen(self, session: Session, ts: int) -> Screen | None:
         assert self.device_id is not None
         reply = await session.query(STATUS_QUERY, timeout=self.settings.transport.read_timeout)
-        if not reply.ok or not reply.body:
-            self.store.log_event("warning", "poller", "status screen query failed", reply.prompt)
+        if not reply.body:
+            self.store.log_event(
+                "warning", "poller", "status screen query returned nothing", reply.prompt
+            )
             return None
+        if not reply.ok:
+            # A queued error does not invalidate the screen that came with it: the body
+            # is the data, and the prompt only says something is in the error queue.
+            # Discarding on prompt alone silently stopped screen-derived metrics.
+            self.store.log_event(
+                "info", "poller", "status screen returned with a queued error", reply.prompt
+            )
         screen = parse_screen(reply.body)
         if screen.parse_failures:
             # Surface as an event rather than writing nulls silently (FR-22). Two

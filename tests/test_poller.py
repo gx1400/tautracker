@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 import pytest
 
@@ -136,3 +137,47 @@ def test_slow_poll_schedule_fires_for_every_cadence(slow_every: int) -> None:
     assert fired[0] == 1, "the first tick should include a screen poll"
     if slow_every == 1:
         assert fired == list(range(1, 13))
+
+
+async def test_screen_is_kept_even_when_an_error_is_queued(tmp_path, settings) -> None:
+    """A queued E-nnn must not discard a perfectly good status screen.
+
+    The SCPI prompt reports the error *queue*, not the outcome of the command that
+    just ran. ``:SYNC:TINT?`` answers E-230 whenever the unit is unlocked, which left
+    an entry queued and made every later prompt read E-230 - silently discarding the
+    screen and freezing every screen-derived metric while the fast ones kept updating.
+    """
+    import json
+
+    screen = (Path(__file__).parent / "fixtures" / "screens" / "locked_hold_tracked.txt").read_text(
+        encoding="utf-8"
+    )
+    p = tmp_path / "queued.jsonl"
+    p.write_text(
+        "\n".join(
+            json.dumps(r)
+            for r in [
+                {"command": "*IDN?", "body": "HP,Z3801A,S,F", "prompt": "scpi >"},
+                {"command": ":SYNC:TINT?", "body": "", "prompt": "E-230>"},
+                # The screen arrives with the still-queued error on its prompt.
+                {"command": ":SYST:STAT?", "body": screen, "prompt": "E-230>"},
+            ]
+        ),
+        encoding="utf-8",
+    )
+    settings = settings.model_copy(
+        update={
+            "transport": settings.transport.model_copy(
+                update={"replay": settings.transport.replay.model_copy(update={"path": p})}
+            ),
+            "database": tmp_path / "queued.db",
+        }
+    )
+    store = Store(settings.database)
+    poller = Poller(settings, store)
+    await run_briefly(poller)
+
+    latest = store.latest(poller.device_id)
+    assert "mode" in latest, "screen was discarded because of a queued error"
+    assert latest["mode"]["text"] == "Locked to GPS"
+    store.close()
