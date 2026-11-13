@@ -125,3 +125,16 @@ def test_pps_clk_status_is_not_the_acquisition_banner() -> None:
     assert s.pps_clk_status is not None
     assert not s.pps_clk_status.endswith("]"), f"matched the banner: {s.pps_clk_status!r}"
     assert "Synchronized" in s.pps_clk_status or "Invalid" in s.pps_clk_status
+
+
+def test_pps_ti_in_picoseconds_is_scaled_to_nanoseconds() -> None:
+    """The device switches to picoseconds once the offset drops below 1 ns.
+
+    This matters more than it looks: the picosecond readings happen precisely when the
+    oscillator is performing best, so treating ``+300 ps`` as 300 would paint 1000x
+    spikes onto the accuracy chart exactly where accuracy is highest. Across one
+    42-hour capture the split was 1380 ns, 29 ps, 565 unlocked.
+    """
+    s = parse_screen(load("locked_ti_picoseconds"))
+    assert s.pps_ti_ns == pytest.approx(0.3)
+    assert s.parse_failures == []

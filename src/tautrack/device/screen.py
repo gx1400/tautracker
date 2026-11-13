@@ -97,6 +97,8 @@ _SAT_HEADER = re.compile(r"PRN\s+El\s+Az")
 #: they must be excluded before searching a single panel for field labels.
 _BANNER_LINE = re.compile(r"^[A-Z][A-Z ]+\s*\.{3,}")
 _NUM = r"[-+]?\d+(?:\.\d+)?"
+#: 1PPS TI is reported in whichever unit keeps the number readable.
+_TI_SCALE_TO_NS = {"ps": 1e-3, "ns": 1.0, "us": 1e3}
 
 
 def _find_line(lines: list[str], needle: str) -> str | None:
@@ -158,11 +160,18 @@ def parse_screen(text: str) -> Screen:
     else:
         fail("ffom")
 
-    # --- 1PPS TI: a signed value in ns, or '--' when unlocked ---
-    if m := re.search(rf"1PPS TI\s+({_NUM})\s*ns", whole):
-        s.pps_ti_ns = float(m.group(1))
+    # --- 1PPS TI ---
+    # The device switches units as the offset shrinks: nanoseconds normally, but
+    # PICOSECONDS once it is under 1 ns, and '--' while unlocked. Across one capture:
+    # 1380 ns, 29 ps, 565 '--'.
+    #
+    # Scaling is essential, not cosmetic. The picosecond readings occur precisely when
+    # the oscillator is performing best, so treating '+300 ps' as 300 would paint 1000x
+    # spikes onto the accuracy chart exactly where accuracy is highest.
+    if m := re.search(rf"1PPS TI\s+({_NUM})\s*(ns|ps|us)", whole):
+        s.pps_ti_ns = float(m.group(1)) * _TI_SCALE_TO_NS[m.group(2)]
     elif re.search(r"1PPS TI\s+--", whole):
-        s.pps_ti_ns = None  # legitimately absent, not a parse failure
+        s.pps_ti_ns = None  # legitimately absent while unlocked, not a parse failure
     else:
         fail("pps_ti_ns")
 
