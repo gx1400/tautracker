@@ -8,8 +8,8 @@ to the maintainer one at a time.
 | Q1 | Where does the time-series data live? | **decided** — own store, OTel additive |
 | Q2 | Implementation language and runtime | **decided** — Python |
 | Q3 | Local storage engine and retention tiering | **decided** — SQLite, app-side rollups |
-| Q4 | How much ADEV analysis to implement | **open** |
-| Q5 | UI stack — server-rendered vs SPA | pending |
+| Q4 | How much ADEV analysis to implement | **decided** — long-tau ADEV only |
+| Q5 | UI stack — server-rendered vs SPA | **open** |
 | Q6 | Charting library | pending |
 | Q7 | Packaging — single container vs compose stack | pending |
 | Q8 | Config file format | pending |
@@ -100,10 +100,37 @@ replaced by continuous aggregates. The rollup semantics transfer.
 
 ## Q4 — How much ADEV analysis to implement
 
-Constrained by C-3: τ < ~2 min is unreachable. Options range from none, through
-medium/long-τ ADEV only with an honest τ floor, to the full ADEV/MDEV/HDEV/TDEV family.
+The Lady Heather scope question, bounded by C-3.
 
-**Decided:** *pending*
+**Decided: overlapping ADEV for long τ only, with the τ floor shown explicitly.**
+
+- Computed from the stored 1PPS TI series, for τ from ~2 min to ~1 day.
+- The τ floor is rendered **on the chart**, not buried in documentation, together with
+  a note that short-τ characterisation requires a time interval counter.
+- MDEV/HDEV/TDEV are not implemented in v1. The stored series supports adding them
+  later without a schema change.
+
+Rationale:
+
+- Long τ is where the questions this tool exists to answer actually live: oscillator
+  aging, temperature response, and holdover behaviour. On the reference unit the
+  holdover prediction improved 8.7× (432 → 49.5 µs/24 h) over two days — a long-τ
+  phenomenon.
+- Honesty about the τ floor matters in this community. Publishing a τ = 1 s figure
+  derived from 60 s samples would be immediately and correctly criticised.
+- Overlapping ADEV over a stored series is well-defined and testable against published
+  reference datasets.
+
+Caveats to carry into the implementation:
+
+- The 1PPS TI reading is the **unit's own internal phase comparison**, not an
+  independent measurement against an external reference. It is a legitimate phase
+  series for long τ, but it is not equivalent to a counter-based measurement and the
+  UI should not imply that it is.
+- τ below ~2 min is unreachable by polling and must never be offered.
+
+Accepted cost: tautrack does not replace Lady Heather for short-term phase noise
+characterisation.
 
 ## Q5 — UI stack
 
