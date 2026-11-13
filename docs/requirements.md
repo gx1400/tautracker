@@ -63,11 +63,20 @@
   target; running directly from a checkout remains supported for development.
 - **NFR-2a** Storage is embedded, so no sidecar database. A single volume holds the
   SQLite file.
-- **NFR-2b** For initial testing the host serial device is passed into the container.
-  On Linux hosts this is `--device /dev/ttyUSB0`. **On Windows hosts, Docker Desktop
-  cannot pass a COM port into a Linux container** — the USB device must first be
-  attached to WSL2 with `usbipd-win`, which detaches it from Windows. See
-  `open-questions.md` Q11.
+- **NFR-2b** Native serial passthrough works **only where the Docker daemon runs on
+  Linux**. Docker Desktop runs a Linux VM on both Windows and macOS and cannot pass a
+  host serial device through. The `tcp` transport covers every other host, so no
+  platform-specific code is required:
+
+  | Host | Transport | How |
+  | --- | --- | --- |
+  | Linux, direct USB | `serial` | `--device /dev/ttyUSB0` |
+  | Linux, gateway | `tcp` | Waveshare or ser2net |
+  | Windows / macOS | `tcp` | host-side bridge (ser2net ships Windows and macOS builds), or `usbipd-win` to attach the device to WSL2 |
+  | Any, with Waveshare | `tcp` | the intended end state |
+
+- **NFR-2d** A third transport, `replay`, reads recorded sessions for development and
+  CI. See `open-questions.md` Q11.
 - **NFR-2c** Once a TCP serial gateway is available, the TCP transport removes the
   need for device passthrough entirely. This is the intended long-term configuration.
 - **NFR-3** Configuration from a file, with environment-variable overrides.

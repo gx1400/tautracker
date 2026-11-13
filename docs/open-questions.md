@@ -11,7 +11,8 @@ to the maintainer one at a time.
 | Q4 | How much ADEV analysis to implement | **decided** — long-tau ADEV only |
 | Q5 | UI stack — server-rendered vs SPA | **decided** — Jinja + htmx |
 | Q6 | Charting library | pending |
-| Q11 | Development data source, given Windows serial passthrough | **open** |
+| Q11 | Development data source, given Docker serial passthrough limits | **decided** — replay transport |
+| Q12 | Platform serial strategy — ship a bridge or document one? | **open** |
 | Q7 | Packaging — single container vs compose stack | **decided** — Docker-first, single container |
 | Q8 | Config file format | pending |
 | Q9 | Satellite history depth for the polar chart | pending |
@@ -195,5 +196,46 @@ The `:SYST:STAT?` screen is fixed-width, two-column, and varies by state (`INIT`
 `AVG` vs held position; tracked table present only when tracking > 0). Column-position
 parsing proved necessary in the prototype scripts — a naive field split reads the
 right-hand table's PRN as the left-hand table's signal strength.
+
+**Decided:** *pending*
+
+## Q11 — Development data source
+
+Docker Desktop (Windows **and** macOS) runs a Linux VM and cannot pass a host serial
+device through. On Windows a COM port must first be attached to WSL2 with
+`usbipd-win`, which detaches it from Windows — and the host-side logger currently
+holds the port for a long-running capture.
+
+**Decided: build a replay transport as a first-class third transport.**
+
+Replays recorded sessions alongside `serial` and `tcp`. Seeded from real captured
+data: ~34,000 lines of `:SYST:STAT?` screens and 1,600+ parsed rows spanning the
+outdoor run, a relocation, lock acquisition, survey completion and a reception
+degradation.
+
+Rationale:
+
+- Development and CI need no hardware, so long-running captures are undisturbed.
+- It makes the parser testable against real pathological states, all of which broke
+  the prototype scripts at least once:
+  - the two-column screen layout (a naive field split reads the right-hand table's PRN
+    as the left-hand table's signal strength)
+  - `INIT` vs `AVG` vs plain held position
+  - the tracked-satellite table being absent entirely when tracking is 0
+  - `Acq .` / `Acq ..` acquisition states
+  - the `[?]` unconfirmed-time flag
+  - `Suspended:` reasons printed on the line *below* the `MODE` line
+- Fixture-driven tests pin these permanently.
+
+Accepted cost: replay is not the real transport, so `serial` and `tcp` still need a
+hardware test before release.
+
+## Q12 — Platform serial strategy
+
+See the transport matrix in `requirements.md`. Native `--device` passthrough works only
+where the Docker daemon runs on Linux. Elsewhere the `tcp` transport plus a host-side
+serial bridge is the answer, and ser2net now ships Windows and macOS builds.
+
+The question is whether tautrack also ships its own bridge helper.
 
 **Decided:** *pending*
