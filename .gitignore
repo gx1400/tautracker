@@ -24,9 +24,11 @@ data/
 # Captured device data
 *.csv
 !docs/data/*.csv
+!tests/fixtures/**
 
 # Editors / OS
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
+.venv/

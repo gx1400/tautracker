@@ -1,0 +1,23 @@
+------------------------------- Receiver Status -------------------------------
+ 
+SYNCHRONIZATION ........................................... [ Outputs Invalid ]
+SmartClock Mode ___________________________   Reference Outputs _______________
+   Locked to                                  TFOM     9             FFOM     3
+   Recovery                                   1PPS TI  --
+   Holdover                                   HOLD THR 1.000 us
+>> Power-up: GPS acquisition                  Holdover Uncertainty ____________
+                                              Predict  --
+                                                
+ACQUISITION .......................................... [ GPS 1PPS CLK Invalid ]
+Satellite Status __________________________   Time ____________________________
+Tracking: 5        Not Tracking: 4            GPS      00:27:05 [?] 29 Mar 2007
+PRN  El  Az   SS   PRN  El  Az                1PPS CLK Assessing stability ..
+ 14  68  73   69   * 1  Acq .                 ANT DLY  0 ns
+ 17  77 328  124     2  12  39                Position ________________________
+ 19  53 256   55     6  20 190                MODE     Survey:    0.3% complete
+ 22  72 356   63    24  14 317                
+ 30  37 176  103                              AVG LAT  N  38:59:58.893
+                                              AVG LON  W  94:40:55.044
+ELEV MASK 10 deg   *attempting to track       AVG HGT          +325.93 m  (MSL)
+HEALTH MONITOR ......................................................... [ OK ]
+Self Test: OK    Int Pwr: OK   Oven Pwr: OK   OCXO: OK   EFC: OK   GPS Rcv: OK
